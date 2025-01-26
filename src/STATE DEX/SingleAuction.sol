@@ -48,13 +48,6 @@ contract AuctionRatioSwapping {
         uint256 bountyAMount;
         uint256 time;
     }
-    // Struct to store reverse swap settings for a pair
-    struct ReverseSwapSettings {
-        bool isEnabled; // Whether reverse swap is enabled for the pair
-        uint256 startTime; // Start time for reverse swap
-        uint256 endTime; // End time for reverse swap
-    }
-
     mapping(address => Vault) public vaults;
     mapping(address => BurnInfo) public burnInfo;
     mapping(address => mapping(address => uint256)) public RatioTarget;
@@ -62,8 +55,6 @@ contract AuctionRatioSwapping {
     mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    mapping(address => mapping(address => ReverseSwapSettings))
-        public reverseSwapSettings;
     uint256 public burnRate = 1; // Default burn rate in thousandths (0.001)
     mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
@@ -243,17 +234,6 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function checkIfReverseSwap() internal view returns (bool) {
-        ReverseSwapSettings memory settings = reverseSwapSettings[
-            fluxinAddress
-        ][stateToken];
-        uint256 currentTime = block.timestamp;
-
-        // Check if the current time is within the reverse swap time range
-        return (currentTime >= settings.startTime &&
-            currentTime <= settings.endTime);
-    }
-
     function swapTokens(
         address user,
         uint256 amountOut,
@@ -283,14 +263,13 @@ contract AuctionRatioSwapping {
         }
 
         // Reverse swap check
-        bool reverseSwap = checkIfReverseSwap();
 
         // Adjust token addresses and amounts if reverse swap is enabled
         address inputToken = fluxinAddress;
         address outputToken = stateToken;
         uint256 amountIn = getOnepercentOfUserBalance(); // Default amountIn
 
-        if (reverseSwap) {
+        if (reverseSwapEnabled) {
             require(reverseSwapEnabled, "Reverse swaps are disabled");
 
             // Swap input and output tokens
@@ -481,19 +460,6 @@ contract AuctionRatioSwapping {
         burnWindowDuration = _auctionDuration;
     }
 
-    function setReverseSwapTimeRangeForPair(
-        uint256 _startTime,
-        uint256 _endTime
-    ) external onlyAdmin {
-        require(_startTime < _endTime, "Start time must be before end time");
-        reverseSwapSettings[fluxinAddress][stateToken].startTime = _startTime;
-        reverseSwapSettings[fluxinAddress][stateToken].endTime = _endTime;
-
-        // Ensure reverse mapping is consistent
-        reverseSwapSettings[stateToken][fluxinAddress].startTime = _startTime;
-        reverseSwapSettings[stateToken][fluxinAddress].endTime = _endTime;
-    }
-
     function setInputAmountRate(uint256 rate) public onlyAdmin {
         inputAmountRate = rate;
     }
@@ -502,23 +468,11 @@ contract AuctionRatioSwapping {
         reverseSwapEnabled = _swap;
     }
 
-    // Getter function to return the reverse swap amounts
-    // Getter function to return the reverse swap amounts
-    function getReverseSwapAmounts(uint256 _amountIn)
-        external
-        view
-        returns (uint256 amountOut, uint256 reverseAmountIn)
-    {
-        require(reverseSwapEnabled, "Reverse swaps are disabled");
-
-        // Reverse swap logic:
-        // original amountIn becomes new amountOut (what the user will receive).
-        amountOut = _amountIn; // The amountIn (user's input) becomes the new amountOut (what the user will receive)
-
-        // original amountOut becomes new amountIn (what the user needs to send) with a multiplier of 2.
-        reverseAmountIn = amountOut * 2; // The reverse amountIn is the original amountOut multiplied by 2
-
-        return (amountOut, reverseAmountIn);
+    function getUserHasSwapped() public view returns (bool) {
+        uint256 getCycle = getCurrentAuctionCycle();
+        return
+            userSwapTotalInfo[msg.sender][fluxinAddress][stateToken][getCycle]
+                .hasSwapped;
     }
 
     function getRatioTarget() public view returns (uint256) {
