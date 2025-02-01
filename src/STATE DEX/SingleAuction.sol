@@ -45,8 +45,14 @@ contract AuctionRatioSwapping {
         bool hasSwapped;
         uint256 cycle;
     }
-  
+    struct BurnInfo {
+        address user;
+        uint256 remainingamount;
+        uint256 bountyAMount;
+        uint256 time;
+    }
     mapping(address => Vault) public vaults;
+    mapping(address => BurnInfo) public burnInfo;
     mapping(address => mapping(address => uint256)) public RatioTarget;
     mapping(address => mapping(address => bool)) public approvals;
     mapping(address => mapping(address => uint256)) public lastBurnTime;
@@ -374,6 +380,7 @@ contract AuctionRatioSwapping {
 
         // Reward user with 1% of burn amount
         uint256 reward = burnAmount / 100;
+        fluxin.transfer(msg.sender, reward);
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
