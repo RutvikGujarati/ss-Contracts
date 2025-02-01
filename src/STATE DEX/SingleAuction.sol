@@ -28,6 +28,8 @@ contract AuctionRatioSwapping {
     uint256 public TotalBurnedStates;
     uint256 public TotalTokensBurned;
     uint256 public totalBounty;
+
+    uint256 bufferFee = 2100;
     struct Vault {
         uint256 totalDeposited;
         uint256 totalAuctioned;
@@ -58,7 +60,7 @@ contract AuctionRatioSwapping {
     mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    uint256 public burnRate = 1000; // Default burn rate in thousandths (0.001)
+    uint256 public burnRate = 10000; // Default burn rate in thousandths (0.001)
     mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
     mapping(address => mapping(address => mapping(uint256 => bool)))
@@ -121,10 +123,10 @@ contract AuctionRatioSwapping {
 
     address public governanceAddress;
 
-    function depositTokens(
-        address token,
-        uint256 amount
-    ) external onlyGovernance {
+    function depositTokens(address token, uint256 amount)
+        external
+        onlyGovernance
+    {
         vaults[token].totalDeposited += amount;
 
         IERC20(token).transferFrom(msg.sender, address(this), amount);
@@ -239,13 +241,9 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function swapTokens(
-        address user,
-        uint256 amountOut,
-        uint256 extraGas
-    ) external payable {
+    function swapTokens(address user, uint256 ratio) external payable {
         require(stateToken != address(0), "State token cannot be null");
-
+        uint256 extraGas = getCurrentgas();
         // Get current auction cycle
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
 
@@ -271,6 +269,7 @@ contract AuctionRatioSwapping {
         address inputToken = fluxinAddress;
         address outputToken = stateToken;
         uint256 amountIn = getOnepercentOfUserBalance(); // Default amountIn
+        uint256 amountOut = getOutPutAmount(ratio);
 
         if (reverseSwapEnabled) {
             require(reverseSwapEnabled, "Reverse swaps are disabled");
@@ -328,10 +327,11 @@ contract AuctionRatioSwapping {
         require(success, "Transfer to governance address failed");
     }
 
-    function getSwapAmounts(
-        uint256 _amountIn,
-        uint256 _amountOut
-    ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
+    function getSwapAmounts(uint256 _amountIn, uint256 _amountOut)
+        public
+        pure
+        returns (uint256 newAmountIn, uint256 newAmountOut)
+    {
         uint256 tempAmountOut = _amountIn * 2;
 
         newAmountIn = _amountOut;
@@ -384,8 +384,8 @@ contract AuctionRatioSwapping {
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
-		TotalTokensBurned +=remainingBurnAmount;
-		totalBounty += reward;
+        TotalTokensBurned += remainingBurnAmount;
+        totalBounty += reward;
         fluxin.transfer(msg.sender, reward);
         fluxin.transfer(BURN_ADDRESS, remainingBurnAmount);
 
@@ -397,11 +397,20 @@ contract AuctionRatioSwapping {
         );
     }
 
+    function setBuffer(uint256 amount) public {
+        bufferFee = amount;
+    }
+
+    function getCurrentgas() public view returns (uint256) {
+        return bufferFee;
+    }
+
     function getBurnOccured() public view returns (bool) {
         // Get the current auction cycle
         AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
-        require(cycle.isInitialized, "Auction not initialized for this pair");
-
+        if (!cycle.isInitialized) {
+            return false;
+        }
         uint256 currentTime = block.timestamp;
 
         uint256 fullCycleLength = auctionDuration + auctionInterval;
@@ -414,8 +423,9 @@ contract AuctionRatioSwapping {
 
     function isBurnCycleActive() external view returns (bool) {
         AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
-        require(cycle.isInitialized, "Auction not initialized for this pair");
-
+        if (!cycle.isInitialized) {
+            return false;
+        }
         uint256 currentTime = block.timestamp;
 
         uint256 fullCycleLength = auctionDuration + auctionInterval;
@@ -439,7 +449,9 @@ contract AuctionRatioSwapping {
 
     function getTimeLeftInBurnCycle() public view returns (uint256) {
         AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
-        require(cycle.isInitialized, "Auction not initialized for this pair");
+        if (!cycle.isInitialized) {
+            return 0;
+        }
 
         uint256 currentTime = block.timestamp;
 
@@ -497,6 +509,10 @@ contract AuctionRatioSwapping {
         return RatioTarget[fluxinAddress][stateToken];
     }
 
+    function setInAmountPercentage(uint256 amount) public onlyAdmin {
+        percentage = amount;
+    }
+
     function getOnepercentOfUserBalance() public view returns (uint256) {
         uint256 davbalance = dav.balanceOf(msg.sender);
         if (davbalance == 0) {
@@ -507,6 +523,20 @@ contract AuctionRatioSwapping {
         return secondCalWithDavMax;
     }
 
+    function getOutPutAmount(uint256 currentRatio)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 davbalance = dav.balanceOf(msg.sender);
+        if (davbalance == 0) {
+            return 0;
+        }
+        uint256 getOnePercent = getOnepercentOfUserBalance();
+        uint256 multiplications = (getOnePercent * currentRatio) * 2;
+        return multiplications;
+    }
+
     function setBurnRate(uint256 _burnRate) external onlyAdmin {
         require(_burnRate > 0, "Burn rate must be greater than 0");
         burnRate = _burnRate;
@@ -515,9 +545,11 @@ contract AuctionRatioSwapping {
     function getTotalStateBurned() public view returns (uint256) {
         return TotalBurnedStates;
     }
+
     function getTotalBountyCollected() public view returns (uint256) {
         return totalBounty;
     }
+
     function getTotalTokensBurned() public view returns (uint256) {
         return TotalTokensBurned;
     }
