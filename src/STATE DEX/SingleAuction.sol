@@ -11,9 +11,10 @@ contract AuctionRatioSwapping {
     uint256 public burnWindowDuration = 1 hours;
     uint256 public inputAmountRate = 1;
     Fluxin public fluxin;
+    uint256 public percentage = 1;
     address fluxinAddress;
     address private constant BURN_ADDRESS =
-        0x0000000000000000000000000000000000000000;
+        0x0000000000000000000000000000000000000369;
 
     bool public reverseSwapEnabled = false;
     address stateToken;
@@ -24,7 +25,9 @@ contract AuctionRatioSwapping {
         );
         _;
     }
-
+    uint256 public TotalBurnedStates;
+    uint256 public TotalTokensBurned;
+    uint256 public totalBounty;
     struct Vault {
         uint256 totalDeposited;
         uint256 totalAuctioned;
@@ -42,22 +45,18 @@ contract AuctionRatioSwapping {
         bool hasSwapped;
         uint256 cycle;
     }
-    struct BurnInfo {
-        address user;
-        uint256 remainingamount;
-        uint256 bountyAMount;
-        uint256 time;
-    }
+  
     mapping(address => Vault) public vaults;
-    mapping(address => BurnInfo) public burnInfo;
     mapping(address => mapping(address => uint256)) public RatioTarget;
     mapping(address => mapping(address => bool)) public approvals;
     mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    uint256 public burnRate = 1; // Default burn rate in thousandths (0.001)
+    uint256 public burnRate = 1000; // Default burn rate in thousandths (0.001)
     mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
+    mapping(address => mapping(address => mapping(uint256 => bool)))
+        public burnOccurredInCycle;
 
     event TokensBurned(
         address indexed user,
@@ -116,10 +115,10 @@ contract AuctionRatioSwapping {
 
     address public governanceAddress;
 
-    function depositTokens(address token, uint256 amount)
-        external
-        onlyGovernance
-    {
+    function depositTokens(
+        address token,
+        uint256 amount
+    ) external onlyGovernance {
         vaults[token].totalDeposited += amount;
 
         IERC20(token).transferFrom(msg.sender, address(this), amount);
@@ -262,8 +261,6 @@ contract AuctionRatioSwapping {
             spender = tx.origin;
         }
 
-        // Reverse swap check
-
         // Adjust token addresses and amounts if reverse swap is enabled
         address inputToken = fluxinAddress;
         address outputToken = stateToken;
@@ -298,9 +295,14 @@ contract AuctionRatioSwapping {
 
         vaultOut.totalAuctioned += amountOut;
 
-        // Transfer tokens
-        IERC20(inputToken).transferFrom(spender, address(this), amountIn);
-        IERC20(outputToken).transfer(spender, amountOut);
+        if (reverseSwapEnabled) {
+            IERC20(inputToken).transferFrom(spender, BURN_ADDRESS, amountIn);
+            TotalBurnedStates += amountIn;
+            IERC20(outputToken).transfer(spender, amountOut);
+        } else {
+            IERC20(inputToken).transferFrom(spender, address(this), amountIn);
+            IERC20(outputToken).transfer(spender, amountOut);
+        }
 
         emit TokensSwapped(
             spender,
@@ -320,19 +322,14 @@ contract AuctionRatioSwapping {
         require(success, "Transfer to governance address failed");
     }
 
-    // Getter function to return the swapped amounts
-    function getSwapAmounts(uint256 _amountIn, uint256 _amountOut)
-        public
-        pure
-        returns (uint256 newAmountIn, uint256 newAmountOut)
-    {
-        // Step 1: Multiply amountIn by 2 to get the new amountOut
+    function getSwapAmounts(
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
         uint256 tempAmountOut = _amountIn * 2;
 
-        // Step 2: Set the original amountOut as the new amountIn
         newAmountIn = _amountOut;
 
-        // Step 3: Set the transformed amountIn (amountIn * 2) as the new amountOut
         newAmountOut = tempAmountOut;
 
         return (newAmountIn, newAmountOut);
@@ -364,25 +361,25 @@ contract AuctionRatioSwapping {
 
         // Allow burn only once per cycle
         require(
-            lastBurnCycle[fluxinAddress][stateToken] < currentCycle,
+            !burnOccurredInCycle[msg.sender][fluxinAddress][currentCycle],
             "Burn already occurred for this cycle"
         );
 
-        uint256 burnAmount = (fluxin.balanceOf(address(this)) * burnRate) /
-            1000;
+        uint256 burnAmount = (fluxin.balanceOf(address(this)) * 1) / burnRate;
 
         // Mark this cycle as burned
+        burnOccurredInCycle[msg.sender][fluxinAddress][currentCycle] = true;
         lastBurnCycle[fluxinAddress][stateToken] = currentCycle;
         lastBurnTime[fluxinAddress][stateToken] = currentTime;
 
         // Reward user with 1% of burn amount
         uint256 reward = burnAmount / 100;
-        fluxin.transfer(msg.sender, reward);
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
-        burnInfo[msg.sender].remainingamount = remainingBurnAmount;
-        burnInfo[msg.sender].bountyAMount = reward;
+		TotalTokensBurned +=remainingBurnAmount;
+		totalBounty += reward;
+        fluxin.transfer(msg.sender, reward);
         fluxin.transfer(BURN_ADDRESS, remainingBurnAmount);
 
         emit TokensBurned(
@@ -393,43 +390,70 @@ contract AuctionRatioSwapping {
         );
     }
 
-    function getBurnCycleInfo()
-        external
-        view
-        returns (
-            uint256 currentCycle,
-            uint256 nextBurnStartTime,
-            uint256 nextBurnEndTime,
-            bool isBurnWindowActive
-        )
-    {
+    function getBurnOccured() public view returns (bool) {
+        // Get the current auction cycle
         AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
         require(cycle.isInitialized, "Auction not initialized for this pair");
 
-        // Get the current auction cycle
-        currentCycle = getCurrentAuctionCycle();
-
-        // Calculate the auction end time for the current cycle
-        uint256 auctionStartTime = cycle.firstAuctionStart +
-            (currentCycle - 1) *
-            auctionDuration;
-        uint256 auctionEndTime = auctionStartTime + auctionDuration;
-
-        // Determine the next burn start and end time
-        nextBurnStartTime = auctionEndTime; // Burn starts immediately after auction ends
-        nextBurnEndTime = auctionEndTime + burnWindowDuration; // Burn window duration
-
-        // Check if the current time falls within the burn window
         uint256 currentTime = block.timestamp;
-        isBurnWindowActive = (currentTime >= nextBurnStartTime &&
-            currentTime <= nextBurnEndTime);
 
-        return (
-            currentCycle,
-            nextBurnStartTime,
-            nextBurnEndTime,
-            isBurnWindowActive
-        );
+        uint256 fullCycleLength = auctionDuration + auctionInterval;
+        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
+        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
+
+        // Return whether the burn has occurred in the current cycle
+        return burnOccurredInCycle[msg.sender][fluxinAddress][currentCycle];
+    }
+
+    function isBurnCycleActive() external view returns (bool) {
+        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        require(cycle.isInitialized, "Auction not initialized for this pair");
+
+        uint256 currentTime = block.timestamp;
+
+        uint256 fullCycleLength = auctionDuration + auctionInterval;
+        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
+        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
+        uint256 auctionEndTime = cycle.firstAuctionStart +
+            currentCycle *
+            fullCycleLength -
+            auctionInterval;
+
+        // Check if the current time is within the burn window
+        if (
+            currentTime >= auctionEndTime &&
+            currentTime < auctionEndTime + burnWindowDuration
+        ) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function getTimeLeftInBurnCycle() public view returns (uint256) {
+        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        require(cycle.isInitialized, "Auction not initialized for this pair");
+
+        uint256 currentTime = block.timestamp;
+
+        uint256 fullCycleLength = auctionDuration + auctionInterval;
+        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
+        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
+        uint256 auctionEndTime = cycle.firstAuctionStart +
+            currentCycle *
+            fullCycleLength -
+            auctionInterval;
+
+        // Check if we are in the burn window
+        if (
+            currentTime >= auctionEndTime &&
+            currentTime < auctionEndTime + burnWindowDuration
+        ) {
+            return (auctionEndTime + burnWindowDuration) - currentTime;
+        }
+
+        // If the burn cycle is not active, return 0
+        return 0;
     }
 
     function setRatioTarget(uint256 ratioTarget) external onlyAdmin {
@@ -437,19 +461,6 @@ contract AuctionRatioSwapping {
 
         RatioTarget[fluxinAddress][stateToken] = ratioTarget;
         RatioTarget[stateToken][fluxinAddress] = ratioTarget;
-    }
-
-    function withdrawToken(address tokenAddress, uint256 amount)
-        public
-        onlyAdmin
-    {
-        require(tokenAddress.code.length > 0, "Token must be a contract");
-
-        IERC20 token = IERC20(tokenAddress);
-        uint256 balance = token.balanceOf(address(this));
-        require(balance >= amount, "not enough tokens available in contract");
-        bool success = token.transfer(governanceAddress, amount);
-        require(success, "Transfer failed");
     }
 
     function setAuctionDuration(uint256 _auctionDuration) external onlyAdmin {
@@ -484,14 +495,24 @@ contract AuctionRatioSwapping {
         if (davbalance == 0) {
             return 0;
         }
-        uint256 balance = fluxin.balanceOf(msg.sender);
-        uint256 onePercent = (balance * inputAmountRate) / 100;
-        return onePercent;
+        uint256 firstCal = (1000000000000 * percentage) / 100;
+        uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
+        return secondCalWithDavMax;
     }
 
     function setBurnRate(uint256 _burnRate) external onlyAdmin {
         require(_burnRate > 0, "Burn rate must be greater than 0");
         burnRate = _burnRate;
+    }
+
+    function getTotalStateBurned() public view returns (uint256) {
+        return TotalBurnedStates;
+    }
+    function getTotalBountyCollected() public view returns (uint256) {
+        return totalBounty;
+    }
+    function getTotalTokensBurned() public view returns (uint256) {
+        return TotalTokensBurned;
     }
 
     function getTimeLeftInAuction() public view returns (uint256) {
