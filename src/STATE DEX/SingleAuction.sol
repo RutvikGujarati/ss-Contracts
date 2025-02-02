@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Fluxin.sol";
+import "./DavToken.sol";
 
 contract AuctionRatioSwapping {
     address public admin;
@@ -108,7 +109,7 @@ contract AuctionRatioSwapping {
         _;
     }
 
-    IERC20 public dav;
+    Decentralized_Autonomous_Vaults_DAV_V1_0 public dav;
 
     constructor(
         address state,
@@ -120,15 +121,15 @@ contract AuctionRatioSwapping {
         fluxin = Fluxin(_fluxin);
         fluxinAddress = _fluxin;
         stateToken = state;
-        dav = IERC20(payable(davToken));
+        dav = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(davToken));
     }
 
     address public governanceAddress;
 
-    function depositTokens(
-        address token,
-        uint256 amount
-    ) external onlyGovernance {
+    function depositTokens(address token, uint256 amount)
+        external
+        onlyGovernance
+    {
         vaults[token].totalDeposited += amount;
 
         IERC20(token).transferFrom(msg.sender, address(this), amount);
@@ -207,17 +208,14 @@ contract AuctionRatioSwapping {
             );
         }
 
-        // Initialize and start the auction for the specified pair
         cycle.firstAuctionStart = currentTime;
         cycle.isInitialized = true;
 
-        // Initialize reverse pair
         auctionCycles[stateToken][fluxinAddress] = AuctionCycle({
             firstAuctionStart: currentTime,
             isInitialized: true
         });
 
-        // Reset burn tracking for the new auction cycle
         uint256 newCycle = (currentTime - cycle.firstAuctionStart) /
             auctionDuration +
             1;
@@ -275,8 +273,11 @@ contract AuctionRatioSwapping {
 
     function swapTokens(address user, uint256 ratio) external payable {
         require(stateToken != address(0), "State token cannot be null");
+        require(
+            dav.balanceOf(msg.sender) >= dav.getRequiredDAVAmount(),
+            "required enough dav to paritcipate"
+        );
         uint256 extraGas = getCurrentgas();
-        // Get current auction cycle
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
 
         // Ensure the user has not swapped for this token pair in the current auction cycle
@@ -356,10 +357,11 @@ contract AuctionRatioSwapping {
         require(success, "Transfer to governance address failed");
     }
 
-    function getSwapAmounts(
-        uint256 _amountIn,
-        uint256 _amountOut
-    ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
+    function getSwapAmounts(uint256 _amountIn, uint256 _amountOut)
+        public
+        pure
+        returns (uint256 newAmountIn, uint256 newAmountOut)
+    {
         uint256 tempAmountOut = _amountIn * 2;
 
         newAmountIn = _amountOut;
@@ -546,9 +548,11 @@ contract AuctionRatioSwapping {
         return secondCalWithDavMax;
     }
 
-    function getOutPutAmount(
-        uint256 currentRatio
-    ) public view returns (uint256) {
+    function getOutPutAmount(uint256 currentRatio)
+        public
+        view
+        returns (uint256)
+    {
         uint256 davbalance = dav.balanceOf(msg.sender);
         if (davbalance == 0) {
             return 0;

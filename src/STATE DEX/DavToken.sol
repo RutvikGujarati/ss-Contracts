@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     ERC20,
@@ -11,17 +11,20 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     ReentrancyGuard
 {
     uint256 public constant MAX_SUPPLY = 5000000 ether; // 5 Million DAV Tokens
-    uint256 public constant TOKEN_COST = 200000 ether; // 200,000 PLS per DAV
+    uint256 public constant TOKEN_COST = 250000 ether; // 250,000 PLS per DAV
 
     uint256 public mintedSupply; // Total Minted DAV Tokens
-    address public liquidityWallet; // Liquidity Wallet
-    address public developmentWallet; // Development Wallet
+    address public liquidityWallet;
+    address public developmentWallet;
     uint256 public liquidityFunds;
     uint256 public developmentFunds;
-
+    uint256 public deployTime;
+    uint256 public davIncrement = 1;
+    uint256 public maxPeriod = 2000 days;
+    uint256 public maxDAV = 20;
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
-    address[] public davHolders; // Array to store all DAV holders
+    address[] public davHolders;
 
     event TokensMinted(
         address indexed user,
@@ -30,10 +33,11 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     );
     event FundsWithdrawn(string fundType, uint256 amount, uint256 timestamp);
 
-    mapping(address => uint256) public lastMintTimestamp; // Track the last mint timestamp for each user
-    mapping(address => bool) private isDAVHolder; // Replacing davHolders array with mapping
+    mapping(address => uint256) public lastMintTimestamp;
+    mapping(address => bool) private isDAVHolder;
 
     address private governanceAddress;
+    address private pendingGovernance;
 
     constructor(
         address _liquidityWallet,
@@ -49,6 +53,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         liquidityWallet = _liquidityWallet;
         developmentWallet = _developmentWallet;
         governanceAddress = Governance;
+        deployTime = block.timestamp;
     }
 
     modifier onlyGovernance() {
@@ -74,10 +79,12 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         transfersPaused = false;
     }
 
-    function transfer(
-        address recipient,
-        uint256 amount
-    ) public override whenTransfersAllowed returns (bool) {
+    function transfer(address recipient, uint256 amount)
+        public
+        override
+        whenTransfersAllowed
+        returns (bool)
+    {
         return super.transfer(recipient, amount);
     }
 
@@ -87,6 +94,23 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         uint256 amount
     ) public override whenTransfersAllowed returns (bool) {
         return super.transferFrom(sender, recipient, amount);
+    }
+
+    function setGovernanceAddress(address _newGovernance)
+        external
+        onlyGovernance
+    {
+        require(
+            _newGovernance != address(0),
+            "New governance address cannot be zero"
+        );
+        pendingGovernance = _newGovernance;
+    }
+
+    function acceptGovernance() external {
+        require(msg.sender == pendingGovernance, "Not pending governance");
+        governanceAddress = msg.sender;
+        pendingGovernance = address(0);
     }
 
     function viewLastMintTimeStamp(address user) public view returns (uint256) {
@@ -157,13 +181,27 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         emit FundsWithdrawn("Development", amount, block.timestamp);
     }
 
+    function getRequiredDAVAmount() public view returns (uint256) {
+        uint256 elapsedTime = block.timestamp - deployTime;
+        uint256 periods = elapsedTime / (30 seconds);
+        uint256 davAmount = (periods + 1) * davIncrement;
+        return davAmount >= maxDAV ? maxDAV : davAmount; 
+    }
+
+    function setDAVIncrement(uint256 _newIncrement) external onlyOwner {
+        require(_newIncrement > 0, "Increment must be greater than 0");
+        davIncrement = _newIncrement;
+    }
+
     function getDAVHoldings(address user) public view returns (uint256) {
         return balanceOf(user);
     }
 
-    function getUserHoldingPercentage(
-        address user
-    ) public view returns (uint256) {
+    function getUserHoldingPercentage(address user)
+        public
+        view
+        returns (uint256)
+    {
         uint256 userBalance = balanceOf(user);
         uint256 totalSupply = totalSupply();
         if (totalSupply == 0) {
@@ -174,6 +212,22 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
 
     function balacneETH() public view returns (uint256) {
         return address(this).balance;
+    }
+
+    function updateLiquidityWallet(address _liquidityWallet)
+        external
+        onlyGovernance
+    {
+        require(_liquidityWallet != address(0), "Invalid address");
+        liquidityWallet = _liquidityWallet;
+    }
+
+    function updateDevelopmentWallet(address _developmentWallet)
+        external
+        onlyGovernance
+    {
+        require(_developmentWallet != address(0), "Invalid address");
+        developmentWallet = _developmentWallet;
     }
 
     receive() external payable nonReentrant {}
