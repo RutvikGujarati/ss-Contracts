@@ -16,6 +16,9 @@ contract AuctionRatioSwapping {
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
+    uint256 public reverseSwapEndTime;
+    uint256 public reverseSwapEnabledCycle; // Tracks the auction cycle when reverseSwap was last enabled
+
     bool public reverseSwapEnabled = false;
     address stateToken;
     modifier onlyGovernance() {
@@ -63,8 +66,7 @@ contract AuctionRatioSwapping {
     uint256 public burnRate = 10000; // Default burn rate in thousandths (0.001)
     mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
-    mapping(address => mapping(address => mapping(uint256 => bool)))
-        public burnOccurredInCycle;
+    mapping(address => mapping(uint256 => bool)) public burnOccurredInCycle;
 
     event TokensBurned(
         address indexed user,
@@ -123,10 +125,10 @@ contract AuctionRatioSwapping {
 
     address public governanceAddress;
 
-    function depositTokens(address token, uint256 amount)
-        external
-        onlyGovernance
-    {
+    function depositTokens(
+        address token,
+        uint256 amount
+    ) external onlyGovernance {
         vaults[token].totalDeposited += amount;
 
         IERC20(token).transferFrom(msg.sender, address(this), amount);
@@ -165,7 +167,6 @@ contract AuctionRatioSwapping {
         return false;
     }
 
-    // Function to get the next auction start time for a pair
     function getNextAuctionStart() public view returns (uint256) {
         AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
 
@@ -222,7 +223,7 @@ contract AuctionRatioSwapping {
             1;
         lastBurnCycle[fluxinAddress][stateToken] = newCycle - 1;
         lastBurnCycle[stateToken][fluxinAddress] = newCycle - 1;
-
+        reverseSwapEndTime = currentTime + auctionDuration;
         emit AuctionStarted(
             currentTime,
             currentTime + auctionDuration,
@@ -231,7 +232,38 @@ contract AuctionRatioSwapping {
         );
     }
 
-    // Get current auction cycle number for a pair
+    function setReverseSwapEnabled(bool _enabled) public onlyAdmin {
+        reverseSwapEnabled = _enabled;
+        if (_enabled) {
+            reverseSwapEnabledCycle = getCurrentAuctionCycle();
+        }
+    }
+
+    function isReverseSwapEnabled() public view returns (bool) {
+        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+
+        if (!cycle.isInitialized) {
+            return false;
+        }
+
+        uint256 currentAuctionCycle = getCurrentAuctionCycle();
+
+        if (currentAuctionCycle > reverseSwapEnabledCycle) {
+            return false;
+        }
+
+        uint256 currentTime = block.timestamp;
+        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
+        uint256 fullCycleLength = auctionDuration + auctionInterval;
+        uint256 currentCyclePosition = timeSinceStart % fullCycleLength;
+
+        if (reverseSwapEnabled && currentCyclePosition >= auctionDuration) {
+            return false;
+        }
+
+        return reverseSwapEnabled;
+    }
+
     function getCurrentAuctionCycle() public view returns (uint256) {
         AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
         if (!cycle.isInitialized) return 0;
@@ -265,20 +297,17 @@ contract AuctionRatioSwapping {
             spender = tx.origin;
         }
 
-        // Adjust token addresses and amounts if reverse swap is enabled
         address inputToken = fluxinAddress;
         address outputToken = stateToken;
-        uint256 amountIn = getOnepercentOfUserBalance(); // Default amountIn
+        uint256 amountIn = getOnepercentOfUserBalance();
         uint256 amountOut = getOutPutAmount(ratio);
 
-        if (reverseSwapEnabled) {
-            require(reverseSwapEnabled, "Reverse swaps are disabled");
+        if (isReverseSwapEnabled()) {
+            require(isReverseSwapEnabled(), "Reverse swaps are disabled");
 
-            // Swap input and output tokens
             (inputToken, outputToken) = (outputToken, inputToken);
 
-            // Use the new logic for swapping amounts
-            (amountIn, amountOut) = getSwapAmounts(amountIn, amountOut); // Get new amounts based on swap logic
+            (amountIn, amountOut) = getSwapAmounts(amountIn, amountOut);
         }
 
         require(
@@ -327,11 +356,10 @@ contract AuctionRatioSwapping {
         require(success, "Transfer to governance address failed");
     }
 
-    function getSwapAmounts(uint256 _amountIn, uint256 _amountOut)
-        public
-        pure
-        returns (uint256 newAmountIn, uint256 newAmountOut)
-    {
+    function getSwapAmounts(
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
         uint256 tempAmountOut = _amountIn * 2;
 
         newAmountIn = _amountOut;
@@ -365,28 +393,26 @@ contract AuctionRatioSwapping {
             "Burn window has passed or not started"
         );
 
-        // Allow burn only once per cycle
+        // Prevent burn if it has already occurred in this cycle
         require(
-            !burnOccurredInCycle[msg.sender][fluxinAddress][currentCycle],
+            !burnOccurredInCycle[fluxinAddress][currentCycle],
             "Burn already occurred for this cycle"
         );
 
         uint256 burnAmount = (fluxin.balanceOf(address(this)) * 1) / burnRate;
 
-        // Mark this cycle as burned
-        burnOccurredInCycle[msg.sender][fluxinAddress][currentCycle] = true;
+        burnOccurredInCycle[fluxinAddress][currentCycle] = true;
         lastBurnCycle[fluxinAddress][stateToken] = currentCycle;
         lastBurnTime[fluxinAddress][stateToken] = currentTime;
 
         // Reward user with 1% of burn amount
         uint256 reward = burnAmount / 100;
+        totalBounty += reward;
         fluxin.transfer(msg.sender, reward);
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
         TotalTokensBurned += remainingBurnAmount;
-        totalBounty += reward;
-        fluxin.transfer(msg.sender, reward);
         fluxin.transfer(BURN_ADDRESS, remainingBurnAmount);
 
         emit TokensBurned(
@@ -406,7 +432,6 @@ contract AuctionRatioSwapping {
     }
 
     function getBurnOccured() public view returns (bool) {
-        // Get the current auction cycle
         AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
@@ -417,8 +442,7 @@ contract AuctionRatioSwapping {
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
         uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
 
-        // Return whether the burn has occurred in the current cycle
-        return burnOccurredInCycle[msg.sender][fluxinAddress][currentCycle];
+        return burnOccurredInCycle[fluxinAddress][currentCycle];
     }
 
     function isBurnCycleActive() external view returns (bool) {
@@ -436,7 +460,6 @@ contract AuctionRatioSwapping {
             fullCycleLength -
             auctionInterval;
 
-        // Check if the current time is within the burn window
         if (
             currentTime >= auctionEndTime &&
             currentTime < auctionEndTime + burnWindowDuration
@@ -523,11 +546,9 @@ contract AuctionRatioSwapping {
         return secondCalWithDavMax;
     }
 
-    function getOutPutAmount(uint256 currentRatio)
-        public
-        view
-        returns (uint256)
-    {
+    function getOutPutAmount(
+        uint256 currentRatio
+    ) public view returns (uint256) {
         uint256 davbalance = dav.balanceOf(msg.sender);
         if (davbalance == 0) {
             return 0;
@@ -565,14 +586,12 @@ contract AuctionRatioSwapping {
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
         uint256 fullCycleLength = auctionDuration + auctionInterval;
 
-        // Calculate the current auction cycle position
         uint256 currentCyclePosition = timeSinceStart % fullCycleLength;
 
-        // Calculate and return the remaining time if within auction duration
         if (currentCyclePosition < auctionDuration) {
             return auctionDuration - currentCyclePosition;
         }
 
-        return 0; // No time left in the auction
+        return 0;
     }
 }
