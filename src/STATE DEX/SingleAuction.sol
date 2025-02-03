@@ -17,10 +17,6 @@ contract AuctionRatioSwapping {
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
-    uint256 public reverseSwapEndTime;
-    uint256 public reverseSwapEnabledCycle; // Tracks the auction cycle when reverseSwap was last enabled
-
-    bool public reverseSwapEnabled = false;
     address stateToken;
     modifier onlyGovernance() {
         require(
@@ -49,6 +45,7 @@ contract AuctionRatioSwapping {
 
     struct UserSwapInfo {
         bool hasSwapped;
+        bool hasReverseSwap;
         uint256 cycle;
     }
     struct BurnInfo {
@@ -64,7 +61,7 @@ contract AuctionRatioSwapping {
     mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    uint256 public burnRate = 10000; // Default burn rate in thousandths (0.001)
+    uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
     mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
     mapping(address => mapping(uint256 => bool)) public burnOccurredInCycle;
@@ -221,45 +218,12 @@ contract AuctionRatioSwapping {
             1;
         lastBurnCycle[fluxinAddress][stateToken] = newCycle - 1;
         lastBurnCycle[stateToken][fluxinAddress] = newCycle - 1;
-        reverseSwapEndTime = currentTime + auctionDuration;
         emit AuctionStarted(
             currentTime,
             currentTime + auctionDuration,
             fluxinAddress,
             stateToken
         );
-    }
-
-    function setReverseSwapEnabled(bool _enabled) public onlyAdmin {
-        reverseSwapEnabled = _enabled;
-        if (_enabled) {
-            reverseSwapEnabledCycle = getCurrentAuctionCycle();
-        }
-    }
-
-    function isReverseSwapEnabled() public view returns (bool) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
-
-        if (!cycle.isInitialized) {
-            return false;
-        }
-
-        uint256 currentAuctionCycle = getCurrentAuctionCycle();
-
-        if (currentAuctionCycle > reverseSwapEnabledCycle) {
-            return false;
-        }
-
-        uint256 currentTime = block.timestamp;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 currentCyclePosition = timeSinceStart % fullCycleLength;
-
-        if (reverseSwapEnabled && currentCyclePosition >= auctionDuration) {
-            return false;
-        }
-
-        return reverseSwapEnabled;
     }
 
     function getCurrentAuctionCycle() public view returns (uint256) {
@@ -269,6 +233,19 @@ contract AuctionRatioSwapping {
         uint256 timeSinceStart = block.timestamp - cycle.firstAuctionStart;
         uint256 fullCycleLength = auctionDuration + auctionInterval;
         return timeSinceStart / fullCycleLength;
+    }
+
+    function isReverseSwapEnabled(uint256 currentRatio)
+        public
+        view
+        onlyGovernance
+        returns (bool)
+        
+    {
+        if (currentRatio >= RatioTarget[fluxinAddress][stateToken]) {
+            return true;
+        }
+        return false;
     }
 
     function swapTokens(address user, uint256 ratio) external payable {
@@ -284,10 +261,18 @@ contract AuctionRatioSwapping {
         UserSwapInfo storage userSwapInfo = userSwapTotalInfo[user][
             fluxinAddress
         ][stateToken][currentAuctionCycle];
-        require(
-            !userSwapInfo.hasSwapped,
-            "User already swapped in this auction cycle for this pair"
-        );
+
+        if (isReverseSwapEnabled(ratio) == true) {
+            require(
+                !userSwapInfo.hasReverseSwap,
+                "User already swapped in reverse auction for this cycle"
+            );
+        } else {
+            require(
+                !userSwapInfo.hasSwapped,
+                "User already swapped in normal auction for this cycle"
+            );
+        }
 
         require(msg.sender != address(0), "Sender cannot be null");
         require(isAuctionActive(), "No active auction for this pair");
@@ -303,8 +288,11 @@ contract AuctionRatioSwapping {
         uint256 amountIn = getOnepercentOfUserBalance();
         uint256 amountOut = getOutPutAmount(ratio);
 
-        if (isReverseSwapEnabled()) {
-            require(isReverseSwapEnabled(), "Reverse swaps are disabled");
+        if (isReverseSwapEnabled(ratio) == true) {
+            require(
+                isReverseSwapEnabled(ratio) == true,
+                "Reverse swaps are disabled"
+            );
 
             (inputToken, outputToken) = (outputToken, inputToken);
 
@@ -325,16 +313,19 @@ contract AuctionRatioSwapping {
         );
 
         // Mark the user's swap for the current cycle
-        userSwapInfo.hasSwapped = true;
+
         userSwapInfo.cycle = currentAuctionCycle;
 
         vaultOut.totalAuctioned += amountOut;
 
-        if (reverseSwapEnabled) {
+        if (isReverseSwapEnabled(ratio) == true) {
+            userSwapInfo.hasReverseSwap = true;
+
             IERC20(inputToken).transferFrom(spender, BURN_ADDRESS, amountIn);
             TotalBurnedStates += amountIn;
             IERC20(outputToken).transfer(spender, amountOut);
         } else {
+            userSwapInfo.hasSwapped = true;
             IERC20(inputToken).transferFrom(spender, address(this), amountIn);
             IERC20(outputToken).transfer(spender, amountOut);
         }
@@ -519,15 +510,18 @@ contract AuctionRatioSwapping {
         inputAmountRate = rate;
     }
 
-    function setReverseSwap(bool _swap) public onlyAdmin {
-        reverseSwapEnabled = _swap;
-    }
-
-    function getUserHasSwapped() public view returns (bool) {
+    function getUserHasSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[msg.sender][fluxinAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][fluxinAddress][stateToken][getCycle]
                 .hasSwapped;
+    }
+
+    function getUserHasReverseSwapped(address user) public view returns (bool) {
+        uint256 getCycle = getCurrentAuctionCycle();
+        return
+            userSwapTotalInfo[user][fluxinAddress][stateToken][getCycle]
+                .hasReverseSwap;
     }
 
     function getRatioTarget() public view returns (uint256) {
