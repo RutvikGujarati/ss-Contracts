@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../src/STATE DEX/DavToken.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../src/MainTokens/DavToken.sol";
 
 contract ScriptDAV is Script {
     function run() external {

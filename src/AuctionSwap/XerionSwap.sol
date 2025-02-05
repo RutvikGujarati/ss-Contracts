@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../Tokens/Fluxin.sol";
-import "../MainTokens/DavToken.sol";
+import  {Xerion} from "../Tokens/Xerion.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_0} from  "../MainTokens/DavToken.sol";
 
 contract AuctionRatioSwapping {
     address public admin;
@@ -11,9 +11,9 @@ contract AuctionRatioSwapping {
     uint256 public auctionDuration = 1 hours;
     uint256 public burnWindowDuration = 1 hours;
     uint256 public inputAmountRate = 1;
-    Fluxin public fluxin;
+    Xerion public xerion;
     uint256 public percentage = 1;
-    address fluxinAddress;
+    address xerionAddress;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
@@ -39,7 +39,7 @@ contract AuctionRatioSwapping {
         uint256 startTime;
         uint256 endTime;
         bool isActive;
-        address fluxinAddress;
+        address xerionAddress;
         address stateToken;
     }
 
@@ -76,7 +76,7 @@ contract AuctionRatioSwapping {
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
-        address fluxinAddress,
+        address xerionAddress,
         address stateToken
     );
 
@@ -84,13 +84,13 @@ contract AuctionRatioSwapping {
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
-        address fluxinAddress,
+        address xerionAddress,
         address stateToken,
         uint256 collectionPercentage
     );
     event TokensSwapped(
         address indexed user,
-        address indexed fluxinAddress,
+        address indexed xerionAddress,
         address indexed stateToken,
         uint256 amountIn,
         uint256 amountOut
@@ -111,12 +111,12 @@ contract AuctionRatioSwapping {
     constructor(
         address state,
         address davToken,
-        address _fluxin,
+        address _xerion,
         address _gov
     ) {
         governanceAddress = _gov;
-        fluxin = Fluxin(_fluxin);
-        fluxinAddress = _fluxin;
+        xerion = Xerion(_xerion);
+        xerionAddress = _xerion;
         stateToken = state;
         dav = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(davToken));
     }
@@ -146,7 +146,7 @@ contract AuctionRatioSwapping {
     mapping(address => mapping(address => AuctionCycle)) public auctionCycles;
 
     function isAuctionActive() public view returns (bool) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[xerionAddress][stateToken];
 
         if (!cycle.isInitialized) {
             return false;
@@ -166,7 +166,7 @@ contract AuctionRatioSwapping {
     }
 
     function getNextAuctionStart() public view returns (uint256) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[xerionAddress][stateToken];
 
         if (!cycle.isInitialized) {
             return 0;
@@ -186,13 +186,13 @@ contract AuctionRatioSwapping {
 
     function startAuction() public onlyAdmin {
         require(
-            fluxinAddress != address(0) && stateToken != address(0),
+            xerionAddress != address(0) && stateToken != address(0),
             "Invalid token addresses"
         );
 
         uint256 currentTime = block.timestamp;
 
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
 
         // Check if the auction for the specified pair is already initialized
         if (cycle.isInitialized) {
@@ -208,7 +208,7 @@ contract AuctionRatioSwapping {
         cycle.firstAuctionStart = currentTime;
         cycle.isInitialized = true;
 
-        auctionCycles[stateToken][fluxinAddress] = AuctionCycle({
+        auctionCycles[stateToken][xerionAddress] = AuctionCycle({
             firstAuctionStart: currentTime,
             isInitialized: true
         });
@@ -216,18 +216,18 @@ contract AuctionRatioSwapping {
         uint256 newCycle = (currentTime - cycle.firstAuctionStart) /
             auctionDuration +
             1;
-        lastBurnCycle[fluxinAddress][stateToken] = newCycle - 1;
-        lastBurnCycle[stateToken][fluxinAddress] = newCycle - 1;
+        lastBurnCycle[xerionAddress][stateToken] = newCycle - 1;
+        lastBurnCycle[stateToken][xerionAddress] = newCycle - 1;
         emit AuctionStarted(
             currentTime,
             currentTime + auctionDuration,
-            fluxinAddress,
+            xerionAddress,
             stateToken
         );
     }
 
     function getCurrentAuctionCycle() public view returns (uint256) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[xerionAddress][stateToken];
         if (!cycle.isInitialized) return 0;
 
         uint256 timeSinceStart = block.timestamp - cycle.firstAuctionStart;
@@ -238,11 +238,9 @@ contract AuctionRatioSwapping {
     function isReverseSwapEnabled(uint256 currentRatio)
         public
         view
-        onlyGovernance
-        returns (bool)
-        
+        returns (bool)      
     {
-        if (currentRatio >= RatioTarget[fluxinAddress][stateToken]) {
+        if (currentRatio >= RatioTarget[xerionAddress][stateToken]) {
             return true;
         }
         return false;
@@ -259,7 +257,7 @@ contract AuctionRatioSwapping {
 
         // Ensure the user has not swapped for this token pair in the current auction cycle
         UserSwapInfo storage userSwapInfo = userSwapTotalInfo[user][
-            fluxinAddress
+            xerionAddress
         ][stateToken][currentAuctionCycle];
 
         if (isReverseSwapEnabled(ratio) == true) {
@@ -283,7 +281,7 @@ contract AuctionRatioSwapping {
             spender = tx.origin;
         }
 
-        address inputToken = fluxinAddress;
+        address inputToken = xerionAddress;
         address outputToken = stateToken;
         uint256 amountIn = getOnepercentOfUserBalance();
         uint256 amountOut = getOutPutAmount(ratio);
@@ -363,7 +361,7 @@ contract AuctionRatioSwapping {
     }
 
     function burnTokens() external {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
         require(cycle.isInitialized, "Auction not initialized for this pair");
 
         uint256 currentTime = block.timestamp;
@@ -388,29 +386,29 @@ contract AuctionRatioSwapping {
 
         // Prevent burn if it has already occurred in this cycle
         require(
-            !burnOccurredInCycle[fluxinAddress][currentCycle],
+            !burnOccurredInCycle[xerionAddress][currentCycle],
             "Burn already occurred for this cycle"
         );
 
-        uint256 burnAmount = (fluxin.balanceOf(address(this)) * 1) / burnRate;
+        uint256 burnAmount = (xerion.balanceOf(address(this)) * 1) / burnRate;
 
-        burnOccurredInCycle[fluxinAddress][currentCycle] = true;
-        lastBurnCycle[fluxinAddress][stateToken] = currentCycle;
-        lastBurnTime[fluxinAddress][stateToken] = currentTime;
+        burnOccurredInCycle[xerionAddress][currentCycle] = true;
+        lastBurnCycle[xerionAddress][stateToken] = currentCycle;
+        lastBurnTime[xerionAddress][stateToken] = currentTime;
 
         // Reward user with 1% of burn amount
         uint256 reward = burnAmount / 100;
         totalBounty += reward;
-        fluxin.transfer(msg.sender, reward);
+        xerion.transfer(msg.sender, reward);
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
         TotalTokensBurned += remainingBurnAmount;
-        fluxin.transfer(BURN_ADDRESS, remainingBurnAmount);
+        xerion.transfer(BURN_ADDRESS, remainingBurnAmount);
 
         emit TokensBurned(
             msg.sender,
-            fluxinAddress,
+            xerionAddress,
             remainingBurnAmount,
             reward
         );
@@ -425,7 +423,7 @@ contract AuctionRatioSwapping {
     }
 
     function getBurnOccured() public view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
         }
@@ -435,11 +433,11 @@ contract AuctionRatioSwapping {
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
         uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
 
-        return burnOccurredInCycle[fluxinAddress][currentCycle];
+        return burnOccurredInCycle[xerionAddress][currentCycle];
     }
 
     function isBurnCycleActive() external view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
         }
@@ -464,7 +462,7 @@ contract AuctionRatioSwapping {
     }
 
     function getTimeLeftInBurnCycle() public view returns (uint256) {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
         if (!cycle.isInitialized) {
             return 0;
         }
@@ -494,8 +492,8 @@ contract AuctionRatioSwapping {
     function setRatioTarget(uint256 ratioTarget) external onlyAdmin {
         require(ratioTarget > 0, "Target ratio must be greater than zero");
 
-        RatioTarget[fluxinAddress][stateToken] = ratioTarget;
-        RatioTarget[stateToken][fluxinAddress] = ratioTarget;
+        RatioTarget[xerionAddress][stateToken] = ratioTarget;
+        RatioTarget[stateToken][xerionAddress] = ratioTarget;
     }
 
     function setAuctionDuration(uint256 _auctionDuration) external onlyAdmin {
@@ -513,19 +511,19 @@ contract AuctionRatioSwapping {
     function getUserHasSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[user][fluxinAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][xerionAddress][stateToken][getCycle]
                 .hasSwapped;
     }
 
     function getUserHasReverseSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[user][fluxinAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][xerionAddress][stateToken][getCycle]
                 .hasReverseSwap;
     }
 
     function getRatioTarget() public view returns (uint256) {
-        return RatioTarget[fluxinAddress][stateToken];
+        return RatioTarget[xerionAddress][stateToken];
     }
 
     function setInAmountPercentage(uint256 amount) public onlyAdmin {
@@ -537,7 +535,7 @@ contract AuctionRatioSwapping {
         if (davbalance == 0) {
             return 0;
         }
-        uint256 firstCal = (1000000000000 * percentage) / 100;
+        uint256 firstCal = (xerion.getMax_supply() * percentage) / 100 ether;
         uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
         return secondCalWithDavMax;
     }
@@ -578,7 +576,7 @@ contract AuctionRatioSwapping {
             return 0; // Auction is not active
         }
 
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
         uint256 currentTime = block.timestamp;
 
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;

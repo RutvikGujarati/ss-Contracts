@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../Tokens/Fluxin.sol";
-import "../MainTokens/DavToken.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_0} from  "../MainTokens/DavToken.sol";
+import  {Fluxin} from  "../Tokens/Fluxin.sol";
 
 contract AuctionRatioSwapping {
     address public admin;
@@ -238,9 +238,7 @@ contract AuctionRatioSwapping {
     function isReverseSwapEnabled(uint256 currentRatio)
         public
         view
-        onlyGovernance
         returns (bool)
-        
     {
         if (currentRatio >= RatioTarget[fluxinAddress][stateToken]) {
             return true;
@@ -537,7 +535,7 @@ contract AuctionRatioSwapping {
         if (davbalance == 0) {
             return 0;
         }
-        uint256 firstCal = (1000000000000 * percentage) / 100;
+        uint256 firstCal = (fluxin.getMax_supply() * percentage) / 100 ether;
         uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
         return secondCalWithDavMax;
     }

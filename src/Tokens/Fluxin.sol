@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "./DavToken.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
 
 contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for ERC20;
@@ -102,10 +102,11 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     /**
      * @dev Calculate decayed reward based on decay percentage.
      */
-    function calculateDecayedReward(
-        uint256 baseReward,
-        uint256 decayPercent
-    ) public pure returns (uint256) {
+    function calculateDecayedReward(uint256 baseReward, uint256 decayPercent)
+        public
+        pure
+        returns (uint256)
+    {
         if (decayPercent >= 100) {
             return 0;
         }
@@ -113,9 +114,11 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
         return (baseReward * decayFactor) / (100 * PRECISION);
     }
 
-    function mintAdditionalTOkens(
-        uint256 amount
-    ) public onlyGovernance nonReentrant {
+    function mintAdditionalTOkens(uint256 amount)
+        public
+        onlyGovernance
+        nonReentrant
+    {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
         _mint(governanceAddress, amount);
@@ -166,7 +169,7 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
         );
 
         uint256 amountToMint = ((150000000 * 1e18) * mintableHoldings) /
-            (10 ** decimals());
+            (10**decimals());
         require(
             totalSupply() + reward + amountToMint <= MAX_SUPPLY,
             "Fluxin: Max supply exceeded"
@@ -184,19 +187,25 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     /**
      * @dev Calculate the base reward for a given DAV amount.
      */
-    function calculateBaseReward(
-        uint256 davAmount
-    ) public view returns (uint256) {
+    function calculateBaseReward(uint256 davAmount)
+        public
+        view
+        returns (uint256)
+    {
         // Multiply first to retain precision, then divide
         return (davAmount * (MAX_SUPPLY * 10)) / (5000000 * 1000 * 1e17);
     }
-
+    function getMax_supply()public view returns(uint256){
+        return MAX_SUPPLY;
+    }
     /**
      * @dev Get the decay percentage at a specific timestamp.
      */
-    function getDecayPercentageAtTime(
-        uint256 timestamp
-    ) public view returns (uint256) {
+    function getDecayPercentageAtTime(uint256 timestamp)
+        public
+        view
+        returns (uint256)
+    {
         if (timestamp < REWARD_DECAY_START) return 0;
 
         uint256 elapsed = timestamp - REWARD_DECAY_START;
@@ -213,9 +222,11 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
         return getDecayPercentageAtTime(block.timestamp);
     }
 
-    function transferToken(
-        uint256 amount
-    ) external onlyGovernance nonReentrant {
+    function transferToken(uint256 amount)
+        external
+        onlyGovernance
+        nonReentrant
+    {
         require(amount > 0, "Transfer amount must be greater than zero");
         require(
             balanceOf(address(this)) >= amount,
@@ -229,9 +240,7 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     /**
      * @dev View reward details for a user.
      */
-    function viewRewardDetails(
-        address user
-    )
+    function viewRewardDetails(address user)
         external
         view
         returns (
