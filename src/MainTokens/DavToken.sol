@@ -11,7 +11,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     ReentrancyGuard
 {
     uint256 public constant MAX_SUPPLY = 5000000 ether; // 5 Million DAV Tokens
-    uint256 public constant TOKEN_COST = 250000 ether; // 250,000 PLS per DAV
+    uint256 public constant TOKEN_COST = 1 ether; // 250,000 PLS per DAV
 
     uint256 public mintedSupply; // Total Minted DAV Tokens
     address public liquidityWallet;
@@ -79,12 +79,10 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         transfersPaused = false;
     }
 
-    function transfer(address recipient, uint256 amount)
-        public
-        override
-        whenTransfersAllowed
-        returns (bool)
-    {
+    function transfer(
+        address recipient,
+        uint256 amount
+    ) public override whenTransfersAllowed returns (bool) {
         return super.transfer(recipient, amount);
     }
 
@@ -96,10 +94,9 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         return super.transferFrom(sender, recipient, amount);
     }
 
-    function setGovernanceAddress(address _newGovernance)
-        external
-        onlyGovernance
-    {
+    function setGovernanceAddress(
+        address _newGovernance
+    ) external onlyGovernance {
         require(
             _newGovernance != address(0),
             "New governance address cannot be zero"
@@ -123,7 +120,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         require(amount > 0, "Amount must be greater than zero");
         require(mintedSupply + amount <= MAX_SUPPLY, "Max supply reached");
 
-        uint256 cost = (amount / 1 ether) * TOKEN_COST;
+        uint256 cost = (amount * TOKEN_COST) / 1 ether;
         require(msg.value == cost, "Incorrect PLS amount sent");
 
         mintedSupply += amount;
@@ -185,7 +182,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         uint256 elapsedTime = block.timestamp - deployTime;
         uint256 periods = elapsedTime / (30 seconds);
         uint256 davAmount = (periods + 1) * davIncrement;
-        return davAmount >= maxDAV ? maxDAV : davAmount; 
+        return davAmount >= maxDAV ? maxDAV : davAmount;
     }
 
     function setDAVIncrement(uint256 _newIncrement) external onlyOwner {
@@ -197,11 +194,9 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         return balanceOf(user);
     }
 
-    function getUserHoldingPercentage(address user)
-        public
-        view
-        returns (uint256)
-    {
+    function getUserHoldingPercentage(
+        address user
+    ) public view returns (uint256) {
         uint256 userBalance = balanceOf(user);
         uint256 totalSupply = totalSupply();
         if (totalSupply == 0) {
@@ -214,18 +209,16 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         return address(this).balance;
     }
 
-    function updateLiquidityWallet(address _liquidityWallet)
-        external
-        onlyGovernance
-    {
+    function updateLiquidityWallet(
+        address _liquidityWallet
+    ) external onlyGovernance {
         require(_liquidityWallet != address(0), "Invalid address");
         liquidityWallet = _liquidityWallet;
     }
 
-    function updateDevelopmentWallet(address _developmentWallet)
-        external
-        onlyGovernance
-    {
+    function updateDevelopmentWallet(
+        address _developmentWallet
+    ) external onlyGovernance {
         require(_developmentWallet != address(0), "Invalid address");
         developmentWallet = _developmentWallet;
     }
