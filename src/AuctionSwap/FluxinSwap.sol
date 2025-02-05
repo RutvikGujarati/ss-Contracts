@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Decentralized_Autonomous_Vaults_DAV_V1_0} from  "../MainTokens/DavToken.sol";
-import  {Fluxin} from  "../Tokens/Fluxin.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
+import {Fluxin} from "../Tokens/Fluxin.sol";
 
 contract AuctionRatioSwapping {
     address public admin;
@@ -14,6 +14,9 @@ contract AuctionRatioSwapping {
     Fluxin public fluxin;
     uint256 public percentage = 1;
     address fluxinAddress;
+    uint256 public MAX_State_limit = 2000000;
+    uint256 public MAX_State_Reverse_limit = 1000000;
+    uint256 public MaxLimitOfStateBurning = 10000000000000;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
@@ -123,10 +126,10 @@ contract AuctionRatioSwapping {
 
     address public governanceAddress;
 
-    function depositTokens(address token, uint256 amount)
-        external
-        onlyGovernance
-    {
+    function depositTokens(
+        address token,
+        uint256 amount
+    ) external onlyGovernance {
         vaults[token].totalDeposited += amount;
 
         IERC20(token).transferFrom(msg.sender, address(this), amount);
@@ -235,11 +238,9 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function isReverseSwapEnabled(uint256 currentRatio)
-        public
-        view
-        returns (bool)
-    {
+    function isReverseSwapEnabled(
+        uint256 currentRatio
+    ) public view returns (bool) {
         if (currentRatio >= RatioTarget[fluxinAddress][stateToken]) {
             return true;
         }
@@ -346,14 +347,13 @@ contract AuctionRatioSwapping {
         require(success, "Transfer to governance address failed");
     }
 
-    function getSwapAmounts(uint256 _amountIn, uint256 _amountOut)
-        public
-        pure
-        returns (uint256 newAmountIn, uint256 newAmountOut)
-    {
+    function getSwapAmounts(
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
         uint256 tempAmountOut = _amountIn * 2;
 
-        newAmountIn = _amountOut;
+        newAmountIn = _amountOut / 2;
 
         newAmountOut = tempAmountOut;
 
@@ -403,7 +403,13 @@ contract AuctionRatioSwapping {
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
+
         TotalTokensBurned += remainingBurnAmount;
+
+        require(
+            TotalTokensBurned < MaxLimitOfStateBurning,
+            "limit is reached of burning state token"
+        );
         fluxin.transfer(BURN_ADDRESS, remainingBurnAmount);
 
         emit TokensBurned(
@@ -540,17 +546,34 @@ contract AuctionRatioSwapping {
         return secondCalWithDavMax;
     }
 
-    function getOutPutAmount(uint256 currentRatio)
-        public
-        view
-        returns (uint256)
-    {
-        uint256 davbalance = dav.balanceOf(msg.sender);
-        if (davbalance == 0) {
+    function getOutPutAmount(
+        uint256 currentRatio
+    ) public view returns (uint256) {
+        require(currentRatio > 0, "Invalid ratio");
+
+        uint256 userBalance = dav.balanceOf(msg.sender);
+        if (userBalance == 0) {
             return 0;
         }
-        uint256 getOnePercent = getOnepercentOfUserBalance();
-        uint256 multiplications = (getOnePercent * currentRatio) * 2;
+
+        uint256 onePercent = getOnepercentOfUserBalance();
+        require(onePercent > 0, "Invalid one percent balance");
+
+        // Ensure multiplication doesn’t overflow
+        uint256 multiplications;
+        unchecked {
+            multiplications = (onePercent * currentRatio) * 2;
+        }
+
+        uint256 finalLimit;
+        if (isReverseSwapEnabled(currentRatio)) {
+            finalLimit = MAX_State_Reverse_limit * userBalance;
+        } else {
+            finalLimit = MAX_State_limit * userBalance;
+        }
+
+        require(multiplications < finalLimit, "State token limit reached");
+
         return multiplications;
     }
 

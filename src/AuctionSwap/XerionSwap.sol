@@ -353,7 +353,7 @@ contract AuctionRatioSwapping {
     {
         uint256 tempAmountOut = _amountIn * 2;
 
-        newAmountIn = _amountOut;
+        newAmountIn = _amountOut /2;
 
         newAmountOut = tempAmountOut;
 
