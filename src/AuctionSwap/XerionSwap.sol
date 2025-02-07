@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import  {Xerion} from "../Tokens/Xerion.sol";
-import {Decentralized_Autonomous_Vaults_DAV_V1_0} from  "../MainTokens/DavToken.sol";
+import {Xerion} from "../Tokens/Xerion.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
 
 contract AuctionRatioSwapping {
     address public admin;
@@ -12,6 +12,9 @@ contract AuctionRatioSwapping {
     uint256 public burnWindowDuration = 1 hours;
     uint256 public inputAmountRate = 1;
     Xerion public xerion;
+    uint256 public MAX_State_limit = 2000000;
+    uint256 public MAX_State_Reverse_limit = 1000000;
+    uint256 public MaxLimitOfStateBurning = 10000000000000;
     uint256 public percentage = 1;
     address xerionAddress;
     address private constant BURN_ADDRESS =
@@ -123,10 +126,10 @@ contract AuctionRatioSwapping {
 
     address public governanceAddress;
 
-    function depositTokens(address token, uint256 amount)
-        external
-        onlyGovernance
-    {
+    function depositTokens(
+        address token,
+        uint256 amount
+    ) external onlyGovernance {
         vaults[token].totalDeposited += amount;
 
         IERC20(token).transferFrom(msg.sender, address(this), amount);
@@ -235,11 +238,9 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function isReverseSwapEnabled(uint256 currentRatio)
-        public
-        view
-        returns (bool)      
-    {
+    function isReverseSwapEnabled(
+        uint256 currentRatio
+    ) public view returns (bool) {
         if (currentRatio >= RatioTarget[xerionAddress][stateToken]) {
             return true;
         }
@@ -346,14 +347,20 @@ contract AuctionRatioSwapping {
         require(success, "Transfer to governance address failed");
     }
 
-    function getSwapAmounts(uint256 _amountIn, uint256 _amountOut)
-        public
-        pure
-        returns (uint256 newAmountIn, uint256 newAmountOut)
-    {
+    function setStateLimit(
+        uint256 _forNormalSwap,
+        uint256 _forReverseSwap
+    ) public onlyAdmin {
+        MAX_State_limit = _forNormalSwap;
+        MAX_State_Reverse_limit = _forReverseSwap;
+    }
+    function getSwapAmounts(
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
         uint256 tempAmountOut = _amountIn * 2;
 
-        newAmountIn = _amountOut /2;
+        newAmountIn = _amountOut / 2;
 
         newAmountOut = tempAmountOut;
 
@@ -404,6 +411,10 @@ contract AuctionRatioSwapping {
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
         TotalTokensBurned += remainingBurnAmount;
+		 require(
+            TotalTokensBurned < MaxLimitOfStateBurning,
+            "limit is reached of burning state token"
+        );
         xerion.transfer(BURN_ADDRESS, remainingBurnAmount);
 
         emit TokensBurned(
@@ -540,17 +551,34 @@ contract AuctionRatioSwapping {
         return secondCalWithDavMax;
     }
 
-    function getOutPutAmount(uint256 currentRatio)
-        public
-        view
-        returns (uint256)
-    {
-        uint256 davbalance = dav.balanceOf(msg.sender);
-        if (davbalance == 0) {
+    function getOutPutAmount(
+        uint256 currentRatio
+    ) public view returns (uint256) {
+        require(currentRatio > 0, "Invalid ratio");
+
+        uint256 userBalance = dav.balanceOf(msg.sender);
+        if (userBalance == 0) {
             return 0;
         }
-        uint256 getOnePercent = getOnepercentOfUserBalance();
-        uint256 multiplications = (getOnePercent * currentRatio) * 2;
+
+        uint256 onePercent = getOnepercentOfUserBalance();
+        require(onePercent > 0, "Invalid one percent balance");
+
+        // Ensure multiplication doesn’t overflow
+        uint256 multiplications;
+        unchecked {
+            multiplications = (onePercent * currentRatio) * 2;
+        }
+
+        uint256 finalLimit;
+        if (isReverseSwapEnabled(currentRatio)) {
+            finalLimit = MAX_State_Reverse_limit * userBalance;
+        } else {
+            finalLimit = MAX_State_limit * userBalance;
+        }
+
+        require(multiplications < finalLimit, "State token limit reached");
+
         return multiplications;
     }
 

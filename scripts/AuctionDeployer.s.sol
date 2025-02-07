@@ -5,10 +5,10 @@ import "forge-std/Script.sol";
 import {AuctionRatioSwapping} from "../src/AuctionSwap/FluxinSwap.sol";
 contract AuctionSwapDeploy is Script {
     function run() external {
-        address davToken = 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0;
-        address StatToken = 0xa513E6E4b8f2a923D98304ec87F64353C4D5C853;
-        address Fluxin = 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9;
-        address governance = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+        address davToken = 0x1a44c22FB260cB1fF082501299c588e9078346a2;
+        address StatToken = 0x41b15BeA9cdfA72c9D715E59a255291337A72A60;
+        address Fluxin = 0xbD4828Bb883D591fe6b18c269Da01388f5CE8700;
+        address governance = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
 
         vm.startBroadcast();
 
@@ -24,3 +24,7 @@ contract AuctionSwapDeploy is Script {
 }
 
 //fluxin Swap : 0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6
+
+//testnet: 0x97757d5CDC5BF16f5358D69F51277B44Ef32F85c
+
+//0x706be3785701d282C57D261DdC4Cc152282c9873
