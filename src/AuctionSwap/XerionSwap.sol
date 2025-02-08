@@ -2,25 +2,26 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Xerion} from "../Tokens/Xerion.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
+import {Xerion} from "../Tokens/Xerion.sol";
 
 contract AuctionRatioSwapping {
-    address public admin;
     uint256 public auctionInterval = 2 hours;
     uint256 public auctionDuration = 1 hours;
+    uint256 public reverseDuration = 1 hours;
     uint256 public burnWindowDuration = 1 hours;
     uint256 public inputAmountRate = 1;
     Xerion public xerion;
-    uint256 public MAX_State_limit = 2000000;
-    uint256 public MAX_State_Reverse_limit = 1000000;
-    uint256 public MaxLimitOfStateBurning = 10000000000000;
     uint256 public percentage = 1;
-    address xerionAddress;
+    address public xerionAddress;
+    uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
+    uint256 public MAX_State_limit = 4000000;
+    uint256 public MAX_State_Reverse_limit = 2000000;
+    uint256 public MaxLimitOfStateBurning = 0;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
-    address stateToken;
+    address public stateToken;
     modifier onlyGovernance() {
         require(
             msg.sender == governanceAddress,
@@ -32,7 +33,7 @@ contract AuctionRatioSwapping {
     uint256 public TotalTokensBurned;
     uint256 public totalBounty;
 
-    uint256 bufferFee = 2100;
+    uint256 public bufferFee = 2100;
     struct Vault {
         uint256 totalDeposited;
         uint256 totalAuctioned;
@@ -64,11 +65,10 @@ contract AuctionRatioSwapping {
     mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
     mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
     mapping(address => mapping(uint256 => bool)) public burnOccurredInCycle;
-
+    mapping(uint256 => bool) public reverseAuctionActive;
     event TokensBurned(
         address indexed user,
         address indexed token,
@@ -154,14 +154,21 @@ contract AuctionRatioSwapping {
         if (!cycle.isInitialized) {
             return false;
         }
-
+        uint256 currentCycle = getCurrentAuctionCycle();
         uint256 currentTime = block.timestamp;
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
         uint256 fullCycleLength = auctionDuration + auctionInterval;
+        uint256 currentCyclePosition = timeSinceStart % fullCycleLength;
+
+        if (
+            reverseAuctionActive[currentCycle] &&
+            currentCyclePosition >= auctionDuration
+        ) {
+            return false;
+        }
 
         // If we're in a cycle, find where we are in it
         if (timeSinceStart > 0) {
-            uint256 currentCyclePosition = timeSinceStart % fullCycleLength;
             return currentCyclePosition < auctionDuration;
         }
 
@@ -238,16 +245,58 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function isReverseSwapEnabled(
+    function checkAndActivateReverseAuction(uint256 currentRatio) private {
+        uint256 currentAuctionCycle = getCurrentAuctionCycle();
+        if (
+            !reverseAuctionActive[currentAuctionCycle] &&
+            currentRatio >= RatioTarget[xerionAddress][stateToken]
+        ) {
+            reverseAuctionActive[currentAuctionCycle] = true;
+        }
+    }
+    function checkAndActivateReverseForNextCycle(
         uint256 currentRatio
-    ) public view returns (bool) {
-        if (currentRatio >= RatioTarget[xerionAddress][stateToken]) {
+    ) public onlyAdmin {
+        uint256 currentAuctionCycle = getCurrentAuctionCycle();
+        if (isAuctionActive()) {
+            if (
+                !reverseAuctionActive[currentAuctionCycle] &&
+                currentRatio >= RatioTarget[xerionAddress][stateToken]
+            ) {
+                reverseAuctionActive[currentAuctionCycle] = true;
+            }
+        } else if (
+            !reverseAuctionActive[currentAuctionCycle + 1] &&
+            currentRatio >= RatioTarget[xerionAddress][stateToken]
+        ) {
+            reverseAuctionActive[currentAuctionCycle + 1] = true;
+        }
+    }
+    function isReverseAuctionActive() public view returns (bool) {
+        uint256 currentTime = block.timestamp;
+        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
+        if (!cycle.isInitialized) {
+            return false;
+        }
+        uint256 fullCycleLength = auctionDuration + auctionInterval;
+        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
+        uint256 currentCycleCount = getCurrentAuctionCycle();
+        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
+        uint256 auctionEndTime = cycle.firstAuctionStart +
+            currentCycle *
+            fullCycleLength -
+            auctionInterval;
+        if (
+            reverseAuctionActive[currentCycleCount] &&
+            currentTime >= auctionEndTime &&
+            currentTime < auctionEndTime + reverseDuration
+        ) {
             return true;
         }
         return false;
     }
 
-    function swapTokens(address user, uint256 ratio) external payable {
+    function swapTokens(address user, uint256 ratio) public payable {
         require(stateToken != address(0), "State token cannot be null");
         require(
             dav.balanceOf(msg.sender) >= dav.getRequiredDAVAmount(),
@@ -260,8 +309,9 @@ contract AuctionRatioSwapping {
         UserSwapInfo storage userSwapInfo = userSwapTotalInfo[user][
             xerionAddress
         ][stateToken][currentAuctionCycle];
+        bool isReverseActive = isReverseAuctionActive();
 
-        if (isReverseSwapEnabled(ratio) == true) {
+        if (isReverseActive == true) {
             require(
                 !userSwapInfo.hasReverseSwap,
                 "User already swapped in reverse auction for this cycle"
@@ -287,11 +337,8 @@ contract AuctionRatioSwapping {
         uint256 amountIn = getOnepercentOfUserBalance();
         uint256 amountOut = getOutPutAmount(ratio);
 
-        if (isReverseSwapEnabled(ratio) == true) {
-            require(
-                isReverseSwapEnabled(ratio) == true,
-                "Reverse swaps are disabled"
-            );
+        if (isReverseActive == true) {
+            require(isReverseActive == true, "Reverse swaps are disabled");
 
             (inputToken, outputToken) = (outputToken, inputToken);
 
@@ -317,7 +364,7 @@ contract AuctionRatioSwapping {
 
         vaultOut.totalAuctioned += amountOut;
 
-        if (isReverseSwapEnabled(ratio) == true) {
+        if (isReverseActive == true) {
             userSwapInfo.hasReverseSwap = true;
 
             IERC20(inputToken).transferFrom(spender, BURN_ADDRESS, amountIn);
@@ -341,26 +388,19 @@ contract AuctionRatioSwapping {
             msg.value >= extraGas,
             "Insufficient Ether to cover the extra fee"
         );
-
         // Transfer the extra fee to the governance address
         (bool success, ) = governanceAddress.call{value: extraGas}("");
         require(success, "Transfer to governance address failed");
+        checkAndActivateReverseAuction(ratio);
     }
 
-    function setStateLimit(
-        uint256 _forNormalSwap,
-        uint256 _forReverseSwap
-    ) public onlyAdmin {
-        MAX_State_limit = _forNormalSwap;
-        MAX_State_Reverse_limit = _forReverseSwap;
-    }
     function getSwapAmounts(
         uint256 _amountIn,
         uint256 _amountOut
     ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
         uint256 tempAmountOut = _amountIn * 2;
 
-        newAmountIn = _amountOut / 2;
+        newAmountIn = _amountOut;
 
         newAmountOut = tempAmountOut;
 
@@ -410,9 +450,11 @@ contract AuctionRatioSwapping {
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
+
         TotalTokensBurned += remainingBurnAmount;
-		 require(
-            TotalTokensBurned < MaxLimitOfStateBurning,
+
+        require(
+            TotalTokensBurned > MaxLimitOfStateBurning,
             "limit is reached of burning state token"
         );
         xerion.transfer(BURN_ADDRESS, remainingBurnAmount);
@@ -551,6 +593,13 @@ contract AuctionRatioSwapping {
         return secondCalWithDavMax;
     }
 
+    function setStateLimit(
+        uint256 _forNormalSwap,
+        uint256 _forReverseSwap
+    ) public onlyAdmin {
+        MAX_State_limit = _forNormalSwap;
+        MAX_State_Reverse_limit = _forReverseSwap;
+    }
     function getOutPutAmount(
         uint256 currentRatio
     ) public view returns (uint256) {
@@ -560,24 +609,28 @@ contract AuctionRatioSwapping {
         if (userBalance == 0) {
             return 0;
         }
+        bool isReverseActive = isReverseAuctionActive();
 
         uint256 onePercent = getOnepercentOfUserBalance();
         require(onePercent > 0, "Invalid one percent balance");
 
         // Ensure multiplication doesn’t overflow
         uint256 multiplications;
-        unchecked {
-            multiplications = (onePercent * currentRatio) * 2;
-        }
 
         uint256 finalLimit;
-        if (isReverseSwapEnabled(currentRatio)) {
+        if (isReverseActive == true) {
             finalLimit = MAX_State_Reverse_limit * userBalance;
+            unchecked {
+                multiplications = (onePercent * currentRatio);
+            }
         } else {
             finalLimit = MAX_State_limit * userBalance;
+            unchecked {
+                multiplications = (onePercent * currentRatio) * 2;
+            }
         }
 
-        require(multiplications < finalLimit, "State token limit reached");
+        require(multiplications <= finalLimit, "State token limit reached");
 
         return multiplications;
     }
@@ -589,6 +642,13 @@ contract AuctionRatioSwapping {
 
     function getTotalStateBurned() public view returns (uint256) {
         return TotalBurnedStates;
+    }
+
+    function getMaxLimits() public view returns (uint256, uint256) {
+        uint256 davBalance = dav.balanceOf(msg.sender);
+        uint256 maxStateLimit = davBalance * MAX_State_limit;
+        uint256 maxreverseLimit = davBalance * MAX_State_Reverse_limit;
+        return (maxStateLimit, maxreverseLimit);
     }
 
     function getTotalBountyCollected() public view returns (uint256) {

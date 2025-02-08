@@ -245,7 +245,7 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function checkAndActivateReverseAuction(uint256 currentRatio) private {
+    function checkAndActivateReverseAuction(uint256 currentRatio) internal {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
@@ -254,14 +254,22 @@ contract AuctionRatioSwapping {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
     }
-    function checkAndActivateReverseForNextCycle(uint256 currentRatio) public {
+    function checkAndActivateReverseForNextCycle(
+        uint256 currentRatio
+    ) public onlyAdmin {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
-        if (
+        if (isAuctionActive()) {
+            if (
+                !reverseAuctionActive[currentAuctionCycle] &&
+                currentRatio >= RatioTarget[fluxinAddress][stateToken]
+            ) {
+                reverseAuctionActive[currentAuctionCycle] = true;
+            }
+        } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
             currentRatio >= RatioTarget[fluxinAddress][stateToken]
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
-            reverseAuctionActive[currentAuctionCycle] = true;
         }
     }
 
@@ -305,11 +313,13 @@ contract AuctionRatioSwapping {
         bool isReverseActive = isReverseAuctionActive();
 
         if (isReverseActive == true) {
+            require(isReverseActive, "No active reverse Auction for this pair");
             require(
                 !userSwapInfo.hasReverseSwap,
                 "User already swapped in reverse auction for this cycle"
             );
         } else {
+            require(isAuctionActive(), "No active auction for this pair");
             require(
                 !userSwapInfo.hasSwapped,
                 "User already swapped in normal auction for this cycle"
@@ -317,7 +327,6 @@ contract AuctionRatioSwapping {
         }
 
         require(msg.sender != address(0), "Sender cannot be null");
-        require(isAuctionActive(), "No active auction for this pair");
 
         address spender = msg.sender;
         if (msg.sender != tx.origin) {
@@ -376,12 +385,12 @@ contract AuctionRatioSwapping {
             amountIn,
             amountOut
         );
+        checkAndActivateReverseAuction(ratio);
 
         require(
             msg.value >= extraGas,
             "Insufficient Ether to cover the extra fee"
         );
-        checkAndActivateReverseAuction(ratio);
         // Transfer the extra fee to the governance address
         (bool success, ) = governanceAddress.call{value: extraGas}("");
         require(success, "Transfer to governance address failed");
@@ -391,7 +400,7 @@ contract AuctionRatioSwapping {
         uint256 _amountIn,
         uint256 _amountOut
     ) public pure returns (uint256 newAmountIn, uint256 newAmountOut) {
-        uint256 tempAmountOut = _amountIn * 2;
+        uint256 tempAmountOut = _amountIn;
 
         newAmountIn = _amountOut;
 
@@ -578,12 +587,17 @@ contract AuctionRatioSwapping {
 
     function getOnepercentOfUserBalance() public view returns (uint256) {
         uint256 davbalance = dav.balanceOf(msg.sender);
+        bool isReverse = isReverseAuctionActive();
         if (davbalance == 0) {
             return 0;
         }
         uint256 firstCal = (fluxin.getMax_supply() * percentage) / 100 ether;
         uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
-        return secondCalWithDavMax;
+        if (isReverse == true) {
+            return secondCalWithDavMax * 2;
+        } else {
+            return secondCalWithDavMax;
+        }
     }
 
     function setStateLimit(
@@ -614,7 +628,7 @@ contract AuctionRatioSwapping {
         if (isReverseActive == true) {
             finalLimit = MAX_State_Reverse_limit * userBalance;
             unchecked {
-                multiplications = (onePercent * currentRatio);
+                multiplications = (onePercent * currentRatio) / 2;
             }
         } else {
             finalLimit = MAX_State_limit * userBalance;
