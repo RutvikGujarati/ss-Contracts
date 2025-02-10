@@ -11,7 +11,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     ReentrancyGuard
 {
     uint256 public constant MAX_SUPPLY = 5000000 ether; // 5 Million DAV Tokens
-    uint256 public constant TOKEN_COST = 1 ether; // 250,000 PLS per DAV
+    uint256 public constant TOKEN_COST = 250000 ether; // 250,000 PLS per DAV
 
     uint256 public mintedSupply; // Total Minted DAV Tokens
     address public liquidityWallet;
@@ -22,6 +22,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     uint256 public davIncrement = 1;
     uint256 public maxPeriod = 2000 days;
     uint256 public maxDAV = 20;
+    uint256 public timer = 1 hours;
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
     address[] public davHolders;
@@ -32,10 +33,11 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         uint256 stateAmount
     );
     event FundsWithdrawn(string fundType, uint256 amount, uint256 timestamp);
+    event RewardsClaimed(address indexed user, uint256 amount);
 
     mapping(address => uint256) public lastMintTimestamp;
     mapping(address => bool) private isDAVHolder;
-
+    mapping(address => uint256) public holderRewards;
     address private governanceAddress;
     address private pendingGovernance;
 
@@ -94,22 +96,6 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         return super.transferFrom(sender, recipient, amount);
     }
 
-    function setGovernanceAddress(
-        address _newGovernance
-    ) external onlyGovernance {
-        require(
-            _newGovernance != address(0),
-            "New governance address cannot be zero"
-        );
-        pendingGovernance = _newGovernance;
-    }
-
-    function acceptGovernance() external {
-        require(msg.sender == pendingGovernance, "Not pending governance");
-        governanceAddress = msg.sender;
-        pendingGovernance = address(0);
-    }
-
     function viewLastMintTimeStamp(address user) public view returns (uint256) {
         return lastMintTimestamp[user];
     }
@@ -126,21 +112,42 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         mintedSupply += amount;
         lastMintTimestamp[msg.sender] = block.timestamp;
 
-        uint256 liquidityShare = (msg.value * 95) / 100;
-        uint256 developmentShare = msg.value - liquidityShare;
+        uint256 holderShare = (msg.value * 10) / 100; // 10% of msg.value
+        uint256 remainingFunds = msg.value - holderShare; // 90% remaining
+
+        uint256 liquidityShare = (remainingFunds * 95) / 100;
+        uint256 developmentShare = remainingFunds - liquidityShare;
 
         liquidityFunds += liquidityShare;
         developmentFunds += developmentShare;
-
-        _mint(msg.sender, amount);
-
         // Add the user to the davHolders list if they are not already a holder
         if (!isDAVHolder[msg.sender]) {
             isDAVHolder[msg.sender] = true;
             davHolders.push(msg.sender);
         }
 
+        // Distribute 10% among all DAV holders
+        if (davHolders.length > 0 && holderShare > 0) {
+            uint256 sharePerHolder = holderShare / davHolders.length;
+            for (uint256 i = 0; i < davHolders.length; i++) {
+                holderRewards[davHolders[i]] += sharePerHolder;
+            }
+        }
+        _mint(msg.sender, amount);
+
         emit TokensMinted(msg.sender, amount, msg.value);
+    }
+
+    function claimRewards() external nonReentrant {
+        uint256 reward = holderRewards[msg.sender];
+        require(reward > 0, "No rewards to claim");
+
+        holderRewards[msg.sender] = 0; // Reset before sending to prevent reentrancy
+
+        (bool success, ) = payable(msg.sender).call{value: reward}("");
+        require(success, "Transfer failed");
+
+        emit RewardsClaimed(msg.sender, reward);
     }
 
     function getDAVHolderAt(uint256 index) external view returns (address) {
@@ -180,14 +187,9 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
 
     function getRequiredDAVAmount() public view returns (uint256) {
         uint256 elapsedTime = block.timestamp - deployTime;
-        uint256 periods = elapsedTime / (30 seconds);
+        uint256 periods = elapsedTime / (100 days);
         uint256 davAmount = (periods + 1) * davIncrement;
         return davAmount >= maxDAV ? maxDAV : davAmount;
-    }
-
-    function setDAVIncrement(uint256 _newIncrement) external onlyOwner {
-        require(_newIncrement > 0, "Increment must be greater than 0");
-        davIncrement = _newIncrement;
     }
 
     function getDAVHoldings(address user) public view returns (uint256) {
@@ -203,24 +205,6 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
             return 0;
         }
         return (userBalance * 1e18) / totalSupply; // Return percentage as a scaled value (1e18 = 100%).
-    }
-
-    function balacneETH() public view returns (uint256) {
-        return address(this).balance;
-    }
-
-    function updateLiquidityWallet(
-        address _liquidityWallet
-    ) external onlyGovernance {
-        require(_liquidityWallet != address(0), "Invalid address");
-        liquidityWallet = _liquidityWallet;
-    }
-
-    function updateDevelopmentWallet(
-        address _developmentWallet
-    ) external onlyGovernance {
-        require(_developmentWallet != address(0), "Invalid address");
-        developmentWallet = _developmentWallet;
     }
 
     receive() external payable nonReentrant {}

@@ -5,6 +5,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
 import {Xerion} from "../Tokens/Xerion.sol";
 
+interface IPair {
+    function getReserves()
+        external
+        view
+        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+
+    function token0() external view returns (address);
+
+    function token1() external view returns (address);
+}
 contract AuctionRatioSwapping {
     uint256 public auctionInterval = 2 hours;
     uint256 public auctionDuration = 1 hours;
@@ -15,13 +25,14 @@ contract AuctionRatioSwapping {
     uint256 public percentage = 1;
     address public xerionAddress;
     uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
-    uint256 public MAX_State_limit = 4000000;
-    uint256 public MAX_State_Reverse_limit = 2000000;
     uint256 public MaxLimitOfStateBurning = 0;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
     address public stateToken;
+    address public pairAddress = 0xc6359cD2c70F643888d556D377a4E8e25CAadF77;
+    address public xerionToken = 0xb9664dE2E15b24f5e934e66c72ad9329469E3642;
+    address public pstateToken = 0x63CC0B2CA22b260c7FD68EBBaDEc2275689A3969;
     modifier onlyGovernance() {
         require(
             msg.sender == governanceAddress,
@@ -125,6 +136,22 @@ contract AuctionRatioSwapping {
     }
 
     address public governanceAddress;
+
+    function getxerionToPstateRatio() public view returns (uint256) {
+        IPair pair = IPair(pairAddress);
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+
+        // Ensure xerion/PSTATE ratio is returned
+        if (token0 == xerionToken && token1 == pstateToken) {
+            return (uint256(reserve1) * 1e18) / uint256(reserve0); // xerion → PSTATE
+        } else if (token0 == pstateToken && token1 == xerionToken) {
+            return (uint256(reserve0) * 1e18) / uint256(reserve1); // xerion → PSTATE
+        } else {
+            revert("Invalid pair, does not match xerion/PSTATE");
+        }
+    }
 
     function depositTokens(
         address token,
@@ -245,29 +272,32 @@ contract AuctionRatioSwapping {
         return timeSinceStart / fullCycleLength;
     }
 
-    function checkAndActivateReverseAuction(uint256 currentRatio) internal {
+    function checkAndActivateReverseAuction() internal {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
+        uint256 currentRatio = getxerionToPstateRatio();
+        uint256 currentRatioInEther = currentRatio / 1e18;
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatio >= RatioTarget[xerionAddress][stateToken]
+            currentRatioInEther >= RatioTarget[xerionAddress][stateToken]
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
     }
-    function checkAndActivateReverseForNextCycle(
-        uint256 currentRatio
-    ) public onlyAdmin {
+
+    function checkAndActivateReverseForNextCycle() public onlyAdmin {
+        uint256 currentRatio = getxerionToPstateRatio();
+        uint256 currentRatioInEther = currentRatio / 1e18;
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatio >= RatioTarget[xerionAddress][stateToken]
+                currentRatioInEther >= RatioTarget[xerionAddress][stateToken]
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
         } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
-            currentRatio >= RatioTarget[xerionAddress][stateToken]
+            currentRatioInEther >= RatioTarget[xerionAddress][stateToken]
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
         }
@@ -297,13 +327,12 @@ contract AuctionRatioSwapping {
         return false;
     }
 
-    function swapTokens(address user, uint256 ratio) public payable {
+    function swapTokens(address user) public {
         require(stateToken != address(0), "State token cannot be null");
         require(
             dav.balanceOf(msg.sender) >= dav.getRequiredDAVAmount(),
             "required enough dav to paritcipate"
         );
-        uint256 extraGas = getCurrentgas();
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
 
         // Ensure the user has not swapped for this token pair in the current auction cycle
@@ -337,7 +366,7 @@ contract AuctionRatioSwapping {
         address inputToken = xerionAddress;
         address outputToken = stateToken;
         uint256 amountIn = getOnepercentOfUserBalance();
-        uint256 amountOut = getOutPutAmount(ratio);
+        uint256 amountOut = getOutPutAmount();
 
         if (isReverseActive == true) {
             require(isReverseActive == true, "Reverse swaps are disabled");
@@ -385,15 +414,7 @@ contract AuctionRatioSwapping {
             amountIn,
             amountOut
         );
-        checkAndActivateReverseAuction(ratio);
-
-        require(
-            msg.value >= extraGas,
-            "Insufficient Ether to cover the extra fee"
-        );
-        // Transfer the extra fee to the governance address
-        (bool success, ) = governanceAddress.call{value: extraGas}("");
-        require(success, "Transfer to governance address failed");
+        checkAndActivateReverseAuction();
     }
 
     function getSwapAmounts(
@@ -600,17 +621,10 @@ contract AuctionRatioSwapping {
         }
     }
 
-    function setStateLimit(
-        uint256 _forNormalSwap,
-        uint256 _forReverseSwap
-    ) public onlyAdmin {
-        MAX_State_limit = _forNormalSwap;
-        MAX_State_Reverse_limit = _forReverseSwap;
-    }
-    function getOutPutAmount(
-        uint256 currentRatio
-    ) public view returns (uint256) {
-        require(currentRatio > 0, "Invalid ratio");
+    function getOutPutAmount() public view returns (uint256) {
+        uint256 currentRatio = getxerionToPstateRatio();
+        uint256 currentRatioInEther = currentRatio / 1e18;
+        require(currentRatioInEther > 0, "Invalid ratio");
 
         uint256 userBalance = dav.balanceOf(msg.sender);
         if (userBalance == 0) {
@@ -624,20 +638,15 @@ contract AuctionRatioSwapping {
         // Ensure multiplication doesn’t overflow
         uint256 multiplications;
 
-        uint256 finalLimit;
         if (isReverseActive == true) {
-            finalLimit = MAX_State_Reverse_limit * userBalance;
             unchecked {
-                multiplications = (onePercent * currentRatio) / 2;
+                multiplications = (onePercent * currentRatioInEther) / 2;
             }
         } else {
-            finalLimit = MAX_State_limit * userBalance;
             unchecked {
-                multiplications = (onePercent * currentRatio) * 2;
+                multiplications = (onePercent * currentRatioInEther) * 2;
             }
         }
-
-        require(multiplications <= finalLimit, "State token limit reached");
 
         return multiplications;
     }
@@ -649,13 +658,6 @@ contract AuctionRatioSwapping {
 
     function getTotalStateBurned() public view returns (uint256) {
         return TotalBurnedStates;
-    }
-
-    function getMaxLimits() public view returns (uint256, uint256) {
-        uint256 davBalance = dav.balanceOf(msg.sender);
-        uint256 maxStateLimit = davBalance * MAX_State_limit;
-        uint256 maxreverseLimit = davBalance * MAX_State_Reverse_limit;
-        return (maxStateLimit, maxreverseLimit);
     }
 
     function getTotalBountyCollected() public view returns (uint256) {
