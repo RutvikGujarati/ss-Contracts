@@ -13,7 +13,7 @@ contract Xerion is ERC20, Ownable(msg.sender), ReentrancyGuard {
     Decentralized_Autonomous_Vaults_DAV_V1_0 public davToken;
     uint256 public MAX_SUPPLY = 500000000000 ether;
     uint256 public REWARD_DECAY_START;
-    uint256 public DECAY_INTERVAL = 5 days;
+    uint256 public DECAY_INTERVAL = 3 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
 
