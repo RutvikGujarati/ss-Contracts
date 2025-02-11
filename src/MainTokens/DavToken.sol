@@ -20,9 +20,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
     uint256 public developmentFunds;
     uint256 public deployTime;
     uint256 public davIncrement = 1;
-    uint256 public maxPeriod = 2000 days;
     uint256 public maxDAV = 20;
-    uint256 public timer = 1 hours;
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
     address[] public davHolders;
@@ -81,10 +79,12 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         transfersPaused = false;
     }
 
-    function transfer(
-        address recipient,
-        uint256 amount
-    ) public override whenTransfersAllowed returns (bool) {
+    function transfer(address recipient, uint256 amount)
+        public
+        override
+        whenTransfersAllowed
+        returns (bool)
+    {
         return super.transfer(recipient, amount);
     }
 
@@ -104,6 +104,8 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
 
     function mintDAV(uint256 amount) external payable nonReentrant {
         require(amount > 0, "Amount must be greater than zero");
+        require(amount % 1 ether == 0, "Amount must be a whole number"); // ✅ Ensures whole numbers only
+
         require(mintedSupply + amount <= MAX_SUPPLY, "Max supply reached");
 
         uint256 cost = (amount * TOKEN_COST) / 1 ether;
@@ -187,7 +189,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
 
     function getRequiredDAVAmount() public view returns (uint256) {
         uint256 elapsedTime = block.timestamp - deployTime;
-        uint256 periods = elapsedTime / (100 days);
+        uint256 periods = elapsedTime / (24 hours); // on mainnet it will be 100 days
         uint256 davAmount = (periods + 1) * davIncrement;
         return davAmount >= maxDAV ? maxDAV : davAmount;
     }
@@ -196,9 +198,11 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
         return balanceOf(user);
     }
 
-    function getUserHoldingPercentage(
-        address user
-    ) public view returns (uint256) {
+    function getUserHoldingPercentage(address user)
+        public
+        view
+        returns (uint256)
+    {
         uint256 userBalance = balanceOf(user);
         uint256 totalSupply = totalSupply();
         if (totalSupply == 0) {

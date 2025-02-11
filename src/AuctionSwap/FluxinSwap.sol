@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
 import {Fluxin} from "../Tokens/Fluxin.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IPair {
     function getReserves()
@@ -15,7 +16,7 @@ interface IPair {
 
     function token1() external view returns (address);
 }
-contract AuctionRatioSwapping {
+contract AuctionRatioSwapping is Ownable(msg.sender) {
     uint256 public auctionInterval = 2 hours;
     uint256 public auctionDuration = 1 hours;
     uint256 public reverseDuration = 1 hours;
@@ -33,7 +34,7 @@ contract AuctionRatioSwapping {
     address public pairAddress = 0x361aFa3F5EF839bED6071c9F0c225b078eB8089a; // for fluxin
     address public fluxinToken = 0x6F01eEc1111748B66f735944b18b0EB2835aE201;
     address public pstateToken = 0x63CC0B2CA22b260c7FD68EBBaDEc2275689A3969;
-	
+
     modifier onlyGovernance() {
         require(
             msg.sender == governanceAddress,

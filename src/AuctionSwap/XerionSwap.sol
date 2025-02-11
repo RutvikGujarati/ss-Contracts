@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
 import {Xerion} from "../Tokens/Xerion.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 
 interface IPair {
     function getReserves()
@@ -15,7 +17,7 @@ interface IPair {
 
     function token1() external view returns (address);
 }
-contract AuctionRatioSwapping {
+contract AuctionRatioSwapping is Ownable(msg.sender){
     uint256 public auctionInterval = 2 hours;
     uint256 public auctionDuration = 1 hours;
     uint256 public reverseDuration = 1 hours;
