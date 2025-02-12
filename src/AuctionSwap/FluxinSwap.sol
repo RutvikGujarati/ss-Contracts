@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "../MainTokens/DavToken.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "../MainTokens/DavToken.sol";
 import {Fluxin} from "../Tokens/Fluxin.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -18,9 +18,9 @@ interface IPair {
 
     function token1() external view returns (address);
 }
-contract Ratio_Swapping_Auctions_V1_0 is Ownable(msg.sender), ReentrancyGuard {
+contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for IERC20;
-    Decentralized_Autonomous_Vaults_DAV_V1_0 public dav;
+    Decentralized_Autonomous_Vaults_DAV_V1_1 public dav;
     uint256 public auctionInterval = 2 hours;
     uint256 public auctionDuration = 1 hours;
     uint256 public reverseDuration = 1 hours;

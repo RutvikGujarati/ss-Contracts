@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract Decentralized_Autonomous_Vaults_DAV_V1_0 is
+contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     ERC20,
     Ownable(msg.sender),
     ReentrancyGuard

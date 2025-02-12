@@ -5,16 +5,16 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Decentralized_Autonomous_Vaults_DAV_V1_0} from "./DavToken.sol";
+import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "./DavToken.sol";
 
-contract STATE_Token_V1_0_Ratio_Swapping is
+contract STATE_Token_V1_1_Ratio_Swapping is
     ERC20,
     Ownable(msg.sender),
     ReentrancyGuard
 {
     using SafeERC20 for ERC20;
 
-    Decentralized_Autonomous_Vaults_DAV_V1_0 public davToken;
+    Decentralized_Autonomous_Vaults_DAV_V1_1 public davToken;
     uint256 public MAX_SUPPLY = 999000000000000 ether;
     uint256 public REWARD_DECAY_START;
     uint256 public DECAY_INTERVAL = 10 days;

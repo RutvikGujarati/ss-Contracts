@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import {AuctionRatioSwapping} from "../src/AuctionSwap/FluxinSwap.sol";
+import {Ratio_Swapping_Auctions_V1_1} from "../src/AuctionSwap/FluxinSwap.sol";
 contract AuctionSwapDeploy is Script {
     function run() external {
         address davToken = 0x9BeDBBEF7482D62A51468665914623eB12247b08;
@@ -12,7 +12,7 @@ contract AuctionSwapDeploy is Script {
 
         vm.startBroadcast();
 
-        AuctionRatioSwapping swap = new AuctionRatioSwapping(
+        Ratio_Swapping_Auctions_V1_1 swap = new Ratio_Swapping_Auctions_V1_1(
             StatToken,
             davToken,
             Fluxin,
