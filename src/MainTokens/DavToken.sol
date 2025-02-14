@@ -31,7 +31,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     uint256 public davHoldersCount;
     // follows for do not allow dav token transafers
     bool public transfersPaused = true;
-
+    string public TransactionHash;
     event TokensMinted(
         address indexed user,
         uint256 davAmount,
@@ -112,52 +112,62 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
      * @param amount The number of DAV tokens to mint (must be in whole numbers of 1 DAV = 1 ether).
      */
     function mintDAV(uint256 amount) external payable nonReentrant {
-        require(amount > 0, "Amount must be greater than zero"); // Ensure a positive mint amount
-        require(amount % 1 ether == 0, "Amount must be a whole number"); // Ensures whole DAV tokens (no fractions)
+        require(amount > 0, "Amount must be greater than zero");
+        require(amount % 1 ether == 0, "Amount must be a whole number");
 
-        // Check that the new minted amount does not exceed the maximum supply limit
         require(mintedSupply + amount <= MAX_SUPPLY, "Max supply reached");
 
-        // Calculate the required PLS cost for the requested amount of DAV
         uint256 cost = (amount * TOKEN_COST) / 1 ether;
-        require(msg.value == cost, "Incorrect PLS amount sent"); // Ensure the correct payment is received
+        require(msg.value == cost, "Incorrect PLS amount sent");
 
-        // Update total minted supply and record the timestamp of this mint action
         mintedSupply += amount;
         lastMintTimestamp[msg.sender] = block.timestamp;
 
-        // Calculate fund allocations: 10% to holders, 90% split between liquidity and development
-        uint256 holderShare = (msg.value * 10) / 100; // 10% of received PLS is allocated to existing holders
-        uint256 remainingFunds = msg.value - holderShare; // Remaining 90% to be split further
+        uint256 holderShare = 0; // Initialize to zero
 
-        // Split remaining funds: 95% to liquidity, 5% to development
+        // ✅ Only calculate holderShare if there are DAV holders
+        if (davHolders.length > 0) {
+            holderShare = (msg.value * 10) / 100;
+        }
+
+        uint256 remainingFunds = msg.value - holderShare; // Ensure no ETH is stuck
+
         uint256 liquidityShare = (remainingFunds * 95) / 100;
         uint256 developmentShare = remainingFunds - liquidityShare;
 
-        // Update stored fund balances
         liquidityFunds += liquidityShare;
         developmentFunds += developmentShare;
 
-        // If sender is a new holder, add them to the DAV holders list
         if (!isDAVHolder[msg.sender]) {
             isDAVHolder[msg.sender] = true;
             davHolders.push(msg.sender);
         }
 
-        // Distribute the 10% holder share evenly among all DAV holders
-        if (davHolders.length > 0 && holderShare > 0) {
-            uint256 sharePerHolder = holderShare / davHolders.length;
+        // ✅ Distribute only if holders exist
+        if (holderShare > 0) {
+            uint256 totalHeldByHolders = 0;
+
             for (uint256 i = 0; i < davHolders.length; i++) {
-                holderRewards[davHolders[i]] += sharePerHolder;
+                totalHeldByHolders += balanceOf(davHolders[i]);
+            }
+
+            if (totalHeldByHolders > 0) {
+                for (uint256 i = 0; i < davHolders.length; i++) {
+                    address holder = davHolders[i];
+                    uint256 holderBalance = balanceOf(holder);
+
+                    // Distribute based on percentage ownership
+                    uint256 holderReward = (holderBalance * holderShare) /
+                        totalHeldByHolders;
+                    holderRewards[holder] += holderReward;
+                }
             }
         }
 
-        // Mint new DAV tokens and assign them to the sender
         _mint(msg.sender, amount);
-
-        // Emit event to log the minting action
         emit TokensMinted(msg.sender, amount, msg.value);
     }
+
 
     /**
      * @notice Allows users to claim their 10% of native currency (PLS).
@@ -217,7 +227,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     // this will use in tokens for ensuring enough dav token presents at the time
     function getRequiredDAVAmount() public view returns (uint256) {
         uint256 elapsedTime = block.timestamp - deployTime;
-        uint256 periods = elapsedTime / (24 hours); // on mainnet it will be 100 days
+        uint256 periods = elapsedTime / (100 days); // on mainnet it will be 100 days
         uint256 davAmount = (periods + 1) * davIncrement;
         return davAmount >= maxDAV ? maxDAV : davAmount;
     }

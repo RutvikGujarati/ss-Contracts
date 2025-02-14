@@ -51,7 +51,7 @@ contract Xerion is ERC20, Ownable(msg.sender), ReentrancyGuard {
             "Fluxin: Governance address cannot be zero"
         );
 
-        davToken = Decentralized_Autonomous_Vaults_DAV_V1_0(
+        davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(
             payable(_davTokenAddress)
         );
         governanceAddress = Governance;
@@ -96,7 +96,7 @@ contract Xerion is ERC20, Ownable(msg.sender), ReentrancyGuard {
         );
 
         // Update the DAV token reference
-        davToken = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(newDav));
+        davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(newDav));
     }
 
     /**

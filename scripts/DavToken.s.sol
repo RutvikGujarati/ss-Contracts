@@ -8,16 +8,16 @@ contract ScriptDAV is Script {
     function run() external {
         vm.startBroadcast();
 
-        address liquidity = 0x3Bdbb84B90aBAf52814aAB54B9622408F2dCA483;
-        address DAVWallet = 0x3Bdbb84B90aBAf52814aAB54B9622408F2dCA483;
-        address Governanace = 0x3Bdbb84B90aBAf52814aAB54B9622408F2dCA483;
+        address liquidity = 0xB511110f312a4C6C4a240b2fE94de55D600Df7a9;
+        address DAVWallet = 0x3902BedF016a9c5fdEFDfB035D85Cb92140ACE95;
+        address Governanace = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
 
         Decentralized_Autonomous_Vaults_DAV_V1_1 dav = new Decentralized_Autonomous_Vaults_DAV_V1_1(
                 liquidity,
                 DAVWallet,
                 Governanace,
-                "DAV",
-                "DAV"
+                "pDAV",
+                "pDAV"
             );
 
         console.log("Contract deployed at:", address(dav));
@@ -25,5 +25,3 @@ contract ScriptDAV is Script {
         vm.stopBroadcast();
     }
 }
-//dav : 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
-//testnet : 0x36b6AeE4E4b68d4f48EC5d96512d325A7B07a79D

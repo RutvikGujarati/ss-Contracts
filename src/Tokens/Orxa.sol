@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "../MainTokens/DavToken.sol";
 
-contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
+contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     Decentralized_Autonomous_Vaults_DAV_V1_1 public davToken;
@@ -31,7 +31,7 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     modifier onlyGovernance() {
         require(
             isAuthorized[msg.sender],
-            "Fluxin: You are not authorized to perform this action"
+            "Orxa: You are not authorized to perform this action"
         );
         _;
     }
@@ -44,14 +44,14 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     ) ERC20(name, symbol) {
         require(
             _davTokenAddress != address(0),
-            "Fluxin: Invalid DAV token address"
+            "Orxa: Invalid DAV token address"
         );
         require(
             Governance != address(0),
-            "Fluxin: Governance address cannot be zero"
+            "Orxa: Governance address cannot be zero"
         );
 
-        davToken = Decentralized_Autonomous_Vaults_DAV_V1_0(
+        davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(
             payable(_davTokenAddress)
         );
         governanceAddress = Governance;
@@ -63,40 +63,40 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
      * @dev Change MAX_SUPPLY, restricted to governance.
      */
     function changeMAXSupply(uint256 newMaxSupply) external onlyGovernance {
-        require(newMaxSupply > 0, "Fluxin: Max supply exceeds limit");
+        require(newMaxSupply > 0, "Orxa: Max supply exceeds limit");
         MAX_SUPPLY = newMaxSupply;
     }
 
     function changeTimeStamp(uint256 newTimeStamp) external onlyGovernance {
         require(
             newTimeStamp > block.timestamp,
-            "Fluxin: New timestamp must be in the future"
+            "Orxa: New timestamp must be in the future"
         );
         require(
             newTimeStamp != REWARD_DECAY_START,
-            "Fluxin: New timestamp must be different from the current"
+            "Orxa: New timestamp must be different from the current"
         );
         REWARD_DECAY_START = newTimeStamp;
     }
 
     function changeInterval(uint256 newInterval) external onlyGovernance {
-        require(newInterval > 0, "Fluxin: Interval must be greater than zero");
+        require(newInterval > 0, "Orxa: Interval must be greater than zero");
         require(
             newInterval != DECAY_INTERVAL,
-            "Fluxin: New interval must be different from the current"
+            "Orxa: New interval must be different from the current"
         );
         DECAY_INTERVAL = newInterval;
     }
 
     function changeDavToken(address newDav) external onlyGovernance {
-        require(newDav != address(0), "Fluxin: Invalid DAV token address");
+        require(newDav != address(0), "Orxa: Invalid DAV token address");
         require(
             newDav != address(davToken),
-            "Fluxin: New DAV token must be different from the current"
+            "Orxa: New DAV token must be different from the current"
         );
 
         // Update the DAV token reference
-        davToken = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(newDav));
+        davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(newDav));
     }
 
     /**
@@ -129,14 +129,14 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
      */
     function distributeReward(address user) external nonReentrant {
         // **Checks**
-        require(user != address(0), "Fluxin: Invalid user address");
+        require(user != address(0), "Orxa: Invalid user address");
 
         uint256 currentDavHolding = davToken.balanceOf(user);
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
             ? currentDavHolding - lastHolding
             : 0;
-        require(newDavMinted > 0, "Fluxin: No new DAV minted");
+        require(newDavMinted > 0, "Orxa: No new DAV minted");
 
         uint256 mintTimestamp = davToken.viewLastMintTimeStamp(user);
 
@@ -160,19 +160,19 @@ contract Fluxin is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function mintReward() external nonReentrant {
         // **Checks**
         uint256 reward = userRewardAmount[msg.sender];
-        require(reward > 0, "Fluxin: No reward to mint");
+        require(reward > 0, "Orxa: No reward to mint");
 
         uint256 mintableHoldings = cumulativeMintableHoldings[msg.sender];
         require(
             mintableHoldings > 0,
-            "Fluxin: No new holdings to calculate minting"
+            "Orxa: No new holdings to calculate minting"
         );
 
         uint256 amountToMint = ((150000000 * 1e18) * mintableHoldings) /
             (10**decimals());
         require(
             totalSupply() + reward + amountToMint <= MAX_SUPPLY,
-            "Fluxin: Max supply exceeded"
+            "Orxa: Max supply exceeded"
         );
 
         // **Effects**

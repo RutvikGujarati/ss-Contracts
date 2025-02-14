@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "../MainTokens/DavToken.sol";
-import {Fluxin} from "../Tokens/Fluxin.sol";
+import {Orxa} from "../Tokens/Orxa.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -21,22 +21,22 @@ interface IPair {
 contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for IERC20;
     Decentralized_Autonomous_Vaults_DAV_V1_1 public dav;
-    uint256 public auctionInterval = 2 hours;
-    uint256 public auctionDuration = 1 hours;
-    uint256 public reverseDuration = 1 hours;
-    uint256 public burnWindowDuration = 1 hours;
+    uint256 public auctionInterval = 3 days;
+    uint256 public auctionDuration = 24 hours;
+    uint256 public reverseDuration = 24 hours;
+    uint256 public burnWindowDuration = 24 hours;
     uint256 public inputAmountRate = 1;
-    Fluxin public fluxin;
+    Orxa public orxa;
     uint256 public percentage = 1;
-    address public fluxinAddress;
+    address public orxaAddress;
     uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
     uint256 public MaxLimitOfStateBurning = 10000000000000 ether;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
     address public stateToken;
-    address public pairAddress = 0x361aFa3F5EF839bED6071c9F0c225b078eB8089a; // for fluxin
-    address public fluxinToken = 0x6F01eEc1111748B66f735944b18b0EB2835aE201;
+    address public pairAddress = 0x361aFa3F5EF839bED6071c9F0c225b078eB8089a; // for orxa
+    address public orxaToken = 0x6F01eEc1111748B66f735944b18b0EB2835aE201;
     address public pstateToken = 0x63CC0B2CA22b260c7FD68EBBaDEc2275689A3969;
     address public governanceAddress;
 
@@ -60,7 +60,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 startTime;
         uint256 endTime;
         bool isActive;
-        address fluxinAddress;
+        address orxaAddress;
         address stateToken;
     }
     struct AuctionCycle {
@@ -101,7 +101,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
-        address fluxinAddress,
+        address orxaAddress,
         address stateToken
     );
 
@@ -109,34 +109,29 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
-        address fluxinAddress,
+        address orxaAddress,
         address stateToken,
         uint256 collectionPercentage
     );
 
     event TokensSwapped(
         address indexed user,
-        address indexed fluxinAddress,
+        address indexed orxaAddress,
         address indexed stateToken,
         uint256 amountIn,
         uint256 amountOut
     );
     event AuctionIntervalUpdated(uint256 newInterval);
 
-    constructor(
-        address state,
-        address davToken,
-        address _fluxin,
-        address _gov
-    ) {
+    constructor(address state, address davToken, address _orxa, address _gov) {
         governanceAddress = _gov;
-        fluxin = Fluxin(_fluxin);
-        fluxinAddress = _fluxin;
+        orxa = Orxa(_orxa);
+        orxaAddress = _orxa;
         stateToken = state;
-        dav = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(davToken));
+        dav = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(davToken));
     }
 
-    function getFluxinToPstateRatio() public view returns (uint256) {
+    function getRatioPrice() public view returns (uint256) {
         IPair pair = IPair(pairAddress);
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
         address token0 = pair.token0();
@@ -144,13 +139,13 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         require(reserve0 > 0 && reserve1 > 0, "Invalid reserves"); // ✅ Prevents division by zero
 
-        // Ensure FLUXIN/PSTATE ratio is returned
-        if (token0 == fluxinToken && token1 == pstateToken) {
+        // Ensure orxa/PSTATE ratio is returned
+        if (token0 == orxaToken && token1 == pstateToken) {
             return (uint256(reserve1) * 1e18) / uint256(reserve0);
-        } else if (token0 == pstateToken && token1 == fluxinToken) {
+        } else if (token0 == pstateToken && token1 == orxaToken) {
             return (uint256(reserve0) * 1e18) / uint256(reserve1);
         } else {
-            revert("Invalid pair, does not match FLUXIN/PSTATE");
+            revert("Invalid pair, does not match orxa/PSTATE");
         }
     }
 
@@ -166,13 +161,13 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
     function startAuction() public onlyGovernance {
         require(
-            fluxinAddress != address(0) && stateToken != address(0),
+            orxaAddress != address(0) && stateToken != address(0),
             "Invalid token addresses"
         );
 
         uint256 currentTime = block.timestamp;
 
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
 
         // Check if the auction for the specified pair is already initialized
         if (cycle.isInitialized) {
@@ -188,7 +183,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         cycle.firstAuctionStart = currentTime;
         cycle.isInitialized = true;
 
-        auctionCycles[stateToken][fluxinAddress] = AuctionCycle({
+        auctionCycles[stateToken][orxaAddress] = AuctionCycle({
             firstAuctionStart: currentTime,
             isInitialized: true
         });
@@ -196,42 +191,42 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 newCycle = (currentTime - cycle.firstAuctionStart) /
             auctionDuration +
             1;
-        lastBurnCycle[fluxinAddress][stateToken] = newCycle - 1;
-        lastBurnCycle[stateToken][fluxinAddress] = newCycle - 1;
+        lastBurnCycle[orxaAddress][stateToken] = newCycle - 1;
+        lastBurnCycle[stateToken][orxaAddress] = newCycle - 1;
         emit AuctionStarted(
             currentTime,
             currentTime + auctionDuration,
-            fluxinAddress,
+            orxaAddress,
             stateToken
         );
     }
 
     function checkAndActivateReverseAuction() internal {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
-        uint256 currentRatio = getFluxinToPstateRatio();
+        uint256 currentRatio = getRatioPrice();
         uint256 currentRatioInEther = currentRatio / 1e18;
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatioInEther >= RatioTarget[fluxinAddress][stateToken]
+            currentRatioInEther >= RatioTarget[orxaAddress][stateToken]
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
     }
 
     function checkAndActivateReverseForNextCycle() public onlyGovernance {
-        uint256 currentRatio = getFluxinToPstateRatio();
+        uint256 currentRatio = getRatioPrice();
         uint256 currentRatioInEther = currentRatio / 1e18;
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatioInEther >= RatioTarget[fluxinAddress][stateToken]
+                currentRatioInEther >= RatioTarget[orxaAddress][stateToken]
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
         } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
-            currentRatioInEther >= RatioTarget[fluxinAddress][stateToken]
+            currentRatioInEther >= RatioTarget[orxaAddress][stateToken]
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
         }
@@ -247,7 +242,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         // Ensure the user has not swapped for this token pair in the current auction cycle
         UserSwapInfo storage userSwapInfo = userSwapTotalInfo[user][
-            fluxinAddress
+            orxaAddress
         ][stateToken][currentAuctionCycle];
         bool isReverseActive = isReverseAuctionActive();
 
@@ -273,7 +268,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             spender = tx.origin;
         }
 
-        address inputToken = fluxinAddress;
+        address inputToken = orxaAddress;
         address outputToken = stateToken;
         uint256 amountIn = getOnepercentOfUserBalance();
         uint256 amountOut = getOutPutAmount();
@@ -336,7 +331,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function burnTokens() external {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         require(cycle.isInitialized, "Auction not initialized for this pair");
 
         uint256 currentTime = block.timestamp;
@@ -361,20 +356,20 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         // Prevent burn if it has already occurred in this cycle
         require(
-            !burnOccurredInCycle[fluxinAddress][currentCycle],
+            !burnOccurredInCycle[orxaAddress][currentCycle],
             "Burn already occurred for this cycle"
         );
 
-        uint256 burnAmount = (fluxin.balanceOf(address(this)) * 1) / burnRate;
+        uint256 burnAmount = (orxa.balanceOf(address(this)) * 1) / burnRate;
 
-        burnOccurredInCycle[fluxinAddress][currentCycle] = true;
-        lastBurnCycle[fluxinAddress][stateToken] = currentCycle;
-        lastBurnTime[fluxinAddress][stateToken] = currentTime;
+        burnOccurredInCycle[orxaAddress][currentCycle] = true;
+        lastBurnCycle[orxaAddress][stateToken] = currentCycle;
+        lastBurnTime[orxaAddress][stateToken] = currentTime;
 
         // Reward user with 1% of burn amount
         uint256 reward = burnAmount / 100;
         totalBounty += reward;
-        fluxin.transfer(msg.sender, reward);
+        orxa.transfer(msg.sender, reward);
 
         // Burn the remaining tokens
         uint256 remainingBurnAmount = burnAmount - reward;
@@ -385,21 +380,16 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             TotalTokensBurned < MaxLimitOfStateBurning,
             "limit is reached of burning state token"
         );
-        fluxin.transfer(BURN_ADDRESS, remainingBurnAmount);
+        orxa.transfer(BURN_ADDRESS, remainingBurnAmount);
 
-        emit TokensBurned(
-            msg.sender,
-            fluxinAddress,
-            remainingBurnAmount,
-            reward
-        );
+        emit TokensBurned(msg.sender, orxaAddress, remainingBurnAmount, reward);
     }
 
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
         require(ratioTarget > 0, "Target ratio must be greater than zero");
 
-        RatioTarget[fluxinAddress][stateToken] = ratioTarget;
-        RatioTarget[stateToken][fluxinAddress] = ratioTarget;
+        RatioTarget[orxaAddress][stateToken] = ratioTarget;
+        RatioTarget[stateToken][orxaAddress] = ratioTarget;
     }
 
     function setAuctionDuration(
@@ -430,23 +420,23 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function getUserHasSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[user][fluxinAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][orxaAddress][stateToken][getCycle]
                 .hasSwapped;
     }
 
     function getUserHasReverseSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[user][fluxinAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][orxaAddress][stateToken][getCycle]
                 .hasReverseSwap;
     }
 
     function getRatioTarget() public view returns (uint256) {
-        return RatioTarget[fluxinAddress][stateToken];
+        return RatioTarget[orxaAddress][stateToken];
     }
 
     function isAuctionActive() public view returns (bool) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[orxaAddress][stateToken];
 
         if (!cycle.isInitialized) {
             return false;
@@ -473,7 +463,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     function isReverseAuctionActive() public view returns (bool) {
         uint256 currentTime = block.timestamp;
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
         }
@@ -495,7 +485,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return false;
     }
     function getNextAuctionStart() public view returns (uint256) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[orxaAddress][stateToken];
 
         if (!cycle.isInitialized) {
             return 0;
@@ -513,7 +503,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return nextCycleStart;
     }
     function getCurrentAuctionCycle() public view returns (uint256) {
-        AuctionCycle memory cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[orxaAddress][stateToken];
         if (!cycle.isInitialized) return 0;
 
         uint256 timeSinceStart = block.timestamp - cycle.firstAuctionStart;
@@ -521,7 +511,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return timeSinceStart / fullCycleLength;
     }
     function getBurnOccured() public view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
         }
@@ -531,11 +521,11 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
         uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
 
-        return burnOccurredInCycle[fluxinAddress][currentCycle];
+        return burnOccurredInCycle[orxaAddress][currentCycle];
     }
 
     function isBurnCycleActive() external view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
         }
@@ -560,7 +550,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function getTimeLeftInBurnCycle() public view returns (uint256) {
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         if (!cycle.isInitialized) {
             return 0;
         }
@@ -592,7 +582,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         if (davbalance == 0) {
             return 0;
         }
-        uint256 firstCal = (fluxin.getMax_supply() * percentage) / 100 ether;
+        uint256 firstCal = (orxa.getMax_supply() * percentage) / 100 ether;
         uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
         if (isReverse == true) {
             return secondCalWithDavMax * 2;
@@ -613,7 +603,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return (newAmountIn, newAmountOut);
     }
     function getOutPutAmount() public view returns (uint256) {
-        uint256 currentRatio = getFluxinToPstateRatio();
+        uint256 currentRatio = getRatioPrice();
         uint256 currentRatioInEther = currentRatio / 1e18;
         require(currentRatioInEther > 0, "Invalid ratio");
 
@@ -661,7 +651,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             return 0; // Auction is not active
         }
 
-        AuctionCycle storage cycle = auctionCycles[fluxinAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         uint256 currentTime = block.timestamp;
 
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;

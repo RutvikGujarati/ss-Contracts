@@ -20,7 +20,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     uint256 public DECAY_INTERVAL = 10 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
-
+    uint256 ExtraMintAllowed;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
@@ -56,7 +56,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             "StateToken: Governance address cannot be zero"
         );
 
-        davToken = Decentralized_Autonomous_Vaults_DAV_V1_0(
+        davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(
             payable(_davTokenAddress)
         );
         governanceAddress = Governance;
@@ -102,7 +102,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             newDav != address(davToken),
             "StateToken: New DAV token must be different from the current"
         );
-        davToken = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(newDav));
+        davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(newDav));
     }
 
     /**
@@ -124,6 +124,12 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     ) public onlyGovernance nonReentrant {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
+        uint256 maxAdditionalMint = 1000000000000 ether;
+        require(
+            ExtraMintAllowed <= maxAdditionalMint,
+            "Minting limit exceeded"
+        );
+        ExtraMintAllowed += amount;
         _mint(governanceAddress, amount);
     }
 

@@ -133,7 +133,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         xerion = Xerion(_xerion);
         xerionAddress = _xerion;
         stateToken = state;
-        dav = Decentralized_Autonomous_Vaults_DAV_V1_0(payable(davToken));
+        dav = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(davToken));
     }
 
     function getxerionToPstateRatio() public view returns (uint256) {
