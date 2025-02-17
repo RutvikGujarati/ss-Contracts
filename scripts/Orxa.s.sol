@@ -2,22 +2,18 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Tokens/Fluxin.sol";
+import "../src/Tokens/Orxa.sol";
 
-contract DeployFluxin is Script {
+contract DeployOrxa is Script {
     function run() external {
-        //  address deployer = 0x14093F94E3D9E59D1519A9ca6aA207f88005918c;
-        address davToken = 0x36b6AeE4E4b68d4f48EC5d96512d325A7B07a79D;
-        address governance = 0x3Bdbb84B90aBAf52814aAB54B9622408F2dCA483;
-
+        address davToken = 0xCf7A569E5f90ae07402693288Bdd34fbA646d80a;
+        address governance = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
         vm.startBroadcast();
 
-        Fluxin fluxin = new Fluxin(davToken, "FluxinToken", "FLX", governance);
+        Orxa orxa = new Orxa(davToken, "Orxa", "Orxa", governance);
 
-        console.log("Fluxin deployed at:", address(fluxin));
+        console.log("Orxa deployed at:", address(orxa));
 
         vm.stopBroadcast();
     }
 }
-//0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
-//testnet : 0xAD21D14432421a49a180a6De09dA2D6092436210

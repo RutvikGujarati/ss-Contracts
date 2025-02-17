@@ -21,15 +21,15 @@ interface IPair {
 contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for IERC20;
     Decentralized_Autonomous_Vaults_DAV_V1_1 public dav;
-    uint256 public auctionInterval = 3 days;
-    uint256 public auctionDuration = 24 hours;
-    uint256 public reverseDuration = 24 hours;
-    uint256 public burnWindowDuration = 24 hours;
+    uint256 public auctionInterval = 1 hours;
+    uint256 public auctionDuration = 1 hours;
+    uint256 public reverseDuration = 1 hours;
+    uint256 public burnWindowDuration = 1 hours;
     uint256 public inputAmountRate = 1;
     Orxa public orxa;
     uint256 public percentage = 1;
     address public orxaAddress;
-    uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
+    uint256 public burnRate = 100000; // Default burn rate in (0.00001)
     uint256 public MaxLimitOfStateBurning = 10000000000000 ether;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
@@ -270,7 +270,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         address inputToken = orxaAddress;
         address outputToken = stateToken;
-        uint256 amountIn = getOnepercentOfUserBalance();
+        uint256 amountIn = calculateAuctionEligibleAmount();
         uint256 amountOut = getOutPutAmount();
 
         if (isReverseActive == true) {
@@ -389,7 +389,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         require(ratioTarget > 0, "Target ratio must be greater than zero");
 
         RatioTarget[orxaAddress][stateToken] = ratioTarget;
-        RatioTarget[stateToken][orxaAddress] = ratioTarget;
     }
 
     function setAuctionDuration(
@@ -576,7 +575,8 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         // If the burn cycle is not active, return 0
         return 0;
     }
-    function getOnepercentOfUserBalance() public view returns (uint256) {
+    function calculateAuctionEligibleAmount() public view returns (uint256) {
+        uint256 currentCycle = getCurrentAuctionCycle();
         uint256 davbalance = dav.balanceOf(msg.sender);
         bool isReverse = isReverseAuctionActive();
         if (davbalance == 0) {
@@ -584,11 +584,15 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         }
         uint256 firstCal = (orxa.getMax_supply() * percentage) / 100 ether;
         uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
-        if (isReverse == true) {
-            return secondCalWithDavMax * 2;
-        } else {
-            return secondCalWithDavMax;
+        uint256 baseAmount = isReverse
+            ? secondCalWithDavMax * 2
+            : secondCalWithDavMax;
+
+        if (currentCycle > 0) {
+            uint256 decrementFactor = 100 - currentCycle; // Each cycle decreases amount by 1%
+            return (baseAmount * decrementFactor) / 100;
         }
+		return baseAmount;
     }
     function getSwapAmounts(
         uint256 _amountIn,
@@ -613,7 +617,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         }
 
         bool isReverseActive = isReverseAuctionActive();
-        uint256 onePercent = getOnepercentOfUserBalance();
+        uint256 onePercent = calculateAuctionEligibleAmount();
         require(onePercent > 0, "Invalid one percent balance");
 
         uint256 multiplications;

@@ -21,6 +21,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
     uint256 ExtraMintAllowed;
+    uint256 public constant multiplier = 1000000000;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
@@ -68,7 +69,10 @@ contract STATE_Token_V1_1_Ratio_Swapping is
      * @dev Change MAX_SUPPLY, restricted to governance.
      */
     function changeMAXSupply(uint256 newMaxSupply) external onlyGovernance {
-        require(newMaxSupply > 0, "StateToken: Max supply exceeds limit");
+        require(
+            newMaxSupply > 0,
+            "StateToken: Max supply must be greater than zero"
+        );
         MAX_SUPPLY = newMaxSupply;
     }
 
@@ -124,12 +128,6 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     ) public onlyGovernance nonReentrant {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
-        uint256 maxAdditionalMint = 1000000000000 ether;
-        require(
-            ExtraMintAllowed <= maxAdditionalMint,
-            "Minting limit exceeded"
-        );
-        ExtraMintAllowed += amount;
         _mint(governanceAddress, amount);
     }
 
@@ -177,8 +175,8 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             "StateToken: No new holdings to calculate minting"
         );
 
-        uint256 amountToMint = ((1000000000 * 1e18) * mintableHoldings) /
-            (10 ** decimals());
+        uint256 amountToMint = ((multiplier * 1e18) * mintableHoldings) /
+            (10 ** uint256(decimals()));
         require(
             totalSupply() + reward + amountToMint <= MAX_SUPPLY,
             "StateToken: Max supply exceeded"

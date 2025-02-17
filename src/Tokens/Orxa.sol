@@ -16,7 +16,8 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     uint256 public DECAY_INTERVAL = 5 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
-
+    uint256 public constant multiplier = 150000000; // 150 million
+    uint256 ExtraMintAllowed;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
@@ -63,7 +64,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
      * @dev Change MAX_SUPPLY, restricted to governance.
      */
     function changeMAXSupply(uint256 newMaxSupply) external onlyGovernance {
-        require(newMaxSupply > 0, "Orxa: Max supply exceeds limit");
+        require(newMaxSupply > 0, "Orxa: Max supply must be greater than zero");
         MAX_SUPPLY = newMaxSupply;
     }
 
@@ -102,11 +103,10 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     /**
      * @dev Calculate decayed reward based on decay percentage.
      */
-    function calculateDecayedReward(uint256 baseReward, uint256 decayPercent)
-        public
-        pure
-        returns (uint256)
-    {
+    function calculateDecayedReward(
+        uint256 baseReward,
+        uint256 decayPercent
+    ) public pure returns (uint256) {
         if (decayPercent >= 100) {
             return 0;
         }
@@ -114,13 +114,17 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         return (baseReward * decayFactor) / (100 * PRECISION);
     }
 
-    function mintAdditionalTOkens(uint256 amount)
-        public
-        onlyGovernance
-        nonReentrant
-    {
+    function mintAdditionalTOkens(
+        uint256 amount
+    ) public onlyGovernance nonReentrant {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
+        uint256 maxAdditionalMint = 1000000000000 ether;
+        require(
+            ExtraMintAllowed + amount <= maxAdditionalMint,
+            "Minting limit exceeded"
+        );
+        ExtraMintAllowed += amount;
         _mint(governanceAddress, amount);
     }
 
@@ -168,8 +172,8 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             "Orxa: No new holdings to calculate minting"
         );
 
-        uint256 amountToMint = ((150000000 * 1e18) * mintableHoldings) /
-            (10**decimals());
+        uint256 amountToMint = ((multiplier * 1e18) * mintableHoldings) /
+            (10 ** uint256(decimals()));
         require(
             totalSupply() + reward + amountToMint <= MAX_SUPPLY,
             "Orxa: Max supply exceeded"
@@ -187,25 +191,21 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     /**
      * @dev Calculate the base reward for a given DAV amount.
      */
-    function calculateBaseReward(uint256 davAmount)
-        public
-        view
-        returns (uint256)
-    {
+    function calculateBaseReward(
+        uint256 davAmount
+    ) public view returns (uint256) {
         // Multiply first to retain precision, then divide
         return (davAmount * (MAX_SUPPLY * 10)) / (5000000 * 1000 * 1e17);
     }
-    function getMax_supply()public view returns(uint256){
+    function getMax_supply() public view returns (uint256) {
         return MAX_SUPPLY;
     }
     /**
      * @dev Get the decay percentage at a specific timestamp.
      */
-    function getDecayPercentageAtTime(uint256 timestamp)
-        public
-        view
-        returns (uint256)
-    {
+    function getDecayPercentageAtTime(
+        uint256 timestamp
+    ) public view returns (uint256) {
         if (timestamp < REWARD_DECAY_START) return 0;
 
         uint256 elapsed = timestamp - REWARD_DECAY_START;
@@ -222,11 +222,9 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         return getDecayPercentageAtTime(block.timestamp);
     }
 
-    function transferToken(uint256 amount)
-        external
-        onlyGovernance
-        nonReentrant
-    {
+    function transferToken(
+        uint256 amount
+    ) external onlyGovernance nonReentrant {
         require(amount > 0, "Transfer amount must be greater than zero");
         require(
             balanceOf(address(this)) >= amount,
@@ -240,7 +238,9 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     /**
      * @dev View reward details for a user.
      */
-    function viewRewardDetails(address user)
+    function viewRewardDetails(
+        address user
+    )
         external
         view
         returns (
