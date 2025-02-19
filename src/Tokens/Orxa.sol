@@ -113,7 +113,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
         uint256 maxAdditionalMint = 1000000000000 ether;
-
+        require(totalSupply() + amount <= MAX_SUPPLY, "cap limit exceeded");
         require(
             ExtraMintAllowed + amount <= maxAdditionalMint,
             "Minting limit exceeded"
@@ -128,8 +128,10 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function distributeReward(address user) external nonReentrant {
         // **Checks**
         require(user != address(0), "Orxa: Invalid user address");
-
+        require(msg.sender == tx.origin, "Orxa: Caller cannot be a contract");
+        require(msg.sender.code.length == 0, "Orxa: Caller must be an EOA");
         uint256 currentDavHolding = davToken.balanceOf(user);
+        require(msg.sender == user, "Orxa: Invalid sender");
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
             ? currentDavHolding - lastHolding
