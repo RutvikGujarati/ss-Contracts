@@ -127,6 +127,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         uint256 amount
     ) public onlyGovernance nonReentrant {
         require(amount > 0, "mint amount must be greater than zero");
+        require(amount <= MAX_SUPPLY, "Minting limit exceeded");
         require(governanceAddress != address(0), "address should not be zero");
         _mint(governanceAddress, amount);
     }

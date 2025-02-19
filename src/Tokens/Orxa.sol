@@ -11,12 +11,12 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     Decentralized_Autonomous_Vaults_DAV_V1_1 public davToken;
-    uint256 public MAX_SUPPLY = 1000000000000 ether;
+    uint256 public immutable maxSupply;
     uint256 public REWARD_DECAY_START;
     uint256 public DECAY_INTERVAL = 5 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
-    uint256 public constant multiplier = 150000000; // 150 million
+    uint256 public constant multiplier = 100000000; // 100 million for extra mints
     uint256 ExtraMintAllowed;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
@@ -56,16 +56,9 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             payable(_davTokenAddress)
         );
         governanceAddress = Governance;
+        maxSupply = 1000000000000 ether;
         REWARD_DECAY_START = block.timestamp;
         isAuthorized[Governance] = true;
-    }
-
-    /**
-     * @dev Change MAX_SUPPLY, restricted to governance.
-     */
-    function changeMAXSupply(uint256 newMaxSupply) external onlyGovernance {
-        require(newMaxSupply > 0, "Orxa: Max supply must be greater than zero");
-        MAX_SUPPLY = newMaxSupply;
     }
 
     function changeTimeStamp(uint256 newTimeStamp) external onlyGovernance {
@@ -120,6 +113,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
         uint256 maxAdditionalMint = 1000000000000 ether;
+
         require(
             ExtraMintAllowed + amount <= maxAdditionalMint,
             "Minting limit exceeded"
@@ -171,11 +165,11 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             mintableHoldings > 0,
             "Orxa: No new holdings to calculate minting"
         );
-
+        // multiplier is for extra mints
         uint256 amountToMint = ((multiplier * 1e18) * mintableHoldings) /
             (10 ** uint256(decimals()));
         require(
-            totalSupply() + reward + amountToMint <= MAX_SUPPLY,
+            totalSupply() + reward + amountToMint <= maxSupply,
             "Orxa: Max supply exceeded"
         );
 
@@ -195,10 +189,10 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         uint256 davAmount
     ) public view returns (uint256) {
         // Multiply first to retain precision, then divide
-        return (davAmount * (MAX_SUPPLY * 10)) / (5000000 * 1000 * 1e17);
+        return (davAmount * (maxSupply * 10)) / (5000000 * 1000 * 1e17);
     }
     function getMax_supply() public view returns (uint256) {
-        return MAX_SUPPLY;
+        return maxSupply;
     }
     /**
      * @dev Get the decay percentage at a specific timestamp.
