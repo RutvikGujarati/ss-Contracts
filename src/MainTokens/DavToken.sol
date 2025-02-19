@@ -91,7 +91,15 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         transfersPaused = false;
     }
     //Transferring DAV tokens is not allowed after minting
-
+    /**
+     * @dev Prevent approvals to block indirect transfers via allowance
+     */
+    function approve(
+        address spender,
+        uint256 amount
+    ) public override whenTransfersAllowed returns (bool) {
+        return super.transfer(spender, amount);
+    }
     function transfer(
         address recipient,
         uint256 amount
