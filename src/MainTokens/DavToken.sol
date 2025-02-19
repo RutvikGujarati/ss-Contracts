@@ -11,7 +11,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     ReentrancyGuard
 {
     uint256 public constant MAX_SUPPLY = 5000000 ether; // 5 Million DAV Tokens
-    uint256 public constant TOKEN_COST = 5000 ether;
+    uint256 public constant TOKEN_COST = 500 ether;
 
     uint256 public mintedSupply; // Total Minted DAV Tokens
     /* liquidity and development wallets*/
@@ -22,13 +22,14 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     uint256 public developmentFunds;
 
     uint256 public deployTime;
-    uint256 public davIncrement = 1;
-    uint256 public maxDAV = 10;
+    uint256 public constant davIncrement = 1;
+    uint256 public constant maxDAV = 10;
     /* liquidity and development wallets withdrawal amount*/
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
     address[] public davHolders;
     uint256 public davHoldersCount;
+    uint256 public totalRewardPerTokenStored;
     // follows for do not allow dav token transafers
     bool public transfersPaused = true;
     string public TransactionHash;
@@ -45,6 +46,8 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     mapping(address => uint256) public lastMintTimestamp;
     mapping(address => bool) private isDAVHolder;
     mapping(address => uint256) public holderRewards;
+    mapping(address => uint256) public userRewardPerTokenPaid;
+
     address private governanceAddress;
 
     constructor(
@@ -108,30 +111,19 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         return lastMintTimestamp[user];
     }
 
-    function totalDavhelpByHolders()
-        internal
-        view
-        
-        returns (uint256 totalHeldByHolders)
-    {
-        // First loop: Calculate total balance of all DAV holders
-        for (uint256 i = 0; i < davHolders.length; i++) {
-            totalHeldByHolders += balanceOf(davHolders[i]);
+    function _updateRewards(address account) internal {
+        if (account != address(0)) {
+            holderRewards[account] = earned(account);
+            userRewardPerTokenPaid[account] = totalRewardPerTokenStored;
         }
-        return totalHeldByHolders;
     }
 
-    function distributeLEVY(uint256 holderShare) internal nonReentrant {
-        uint256 totalHeldByHolders = totalDavhelpByHolders();
-        if (totalHeldByHolders > 0) {
-            for (uint256 i = 0; i < davHolders.length; i++) {
-                address holder = davHolders[i];
-                uint256 holderBalance = balanceOf(holder);
-                uint256 holderReward = (holderBalance * holderShare) /
-                    totalHeldByHolders;
-                holderRewards[holder] += holderReward;
-            }
-        }
+    function earned(address account) public view returns (uint256) {
+        return
+            (balanceOf(account) *
+                (totalRewardPerTokenStored - userRewardPerTokenPaid[account])) /
+            1e18 +
+            holderRewards[account];
     }
 
     /**
@@ -156,6 +148,12 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         // ✅ Only calculate holderShare if there are DAV holders
         if (davHolders.length > 0) {
             holderShare = (msg.value * 10) / 100;
+            if (totalSupply() == 0) {
+                uint256 split = holderShare / 2;
+                liquidityFunds += split;
+                developmentFunds += holderShare - split;
+                holderShare = 0;
+            }
         }
 
         uint256 remainingFunds = msg.value - holderShare; // Ensure no ETH is stuck
@@ -174,10 +172,20 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
 
         // ✅ Distribute only if holders exist
         if (holderShare > 0) {
-            distributeLEVY(holderShare);
+            if (totalSupply() > 0) {
+                totalRewardPerTokenStored +=
+                    (holderShare * 1e18) /
+                    totalSupply();
+            }
+            // If no tokens exist, add to development fund
+            else {
+                developmentFunds += holderShare;
+            }
         }
 
+        _updateRewards(msg.sender); // Update before minting
         _mint(msg.sender, amount);
+        _updateRewards(msg.sender); // Update after minting
         emit TokensMinted(msg.sender, amount, msg.value);
     }
 
@@ -185,14 +193,13 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
      * @notice Allows users to claim their 10% of native currency (PLS).
      */
     function claimRewards() external nonReentrant {
+        _updateRewards(msg.sender);
         uint256 reward = holderRewards[msg.sender];
         require(reward > 0, "No rewards to claim");
 
-        holderRewards[msg.sender] = 0; // Reset before sending to prevent reentrancy
-
-        (bool success, ) = payable(msg.sender).call{value: reward}("");
+        holderRewards[msg.sender] = 0;
+        (bool success, ) = msg.sender.call{value: reward}("");
         require(success, "Transfer failed");
-
         emit RewardsClaimed(msg.sender, reward);
     }
 
@@ -235,6 +242,15 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         totalDevelopmentAllocated += amount; // Track total allocated development funds
         emit FundsWithdrawn("Development", amount, block.timestamp);
     }
+    /* Withdraw Stuck ETH if needed */
+    function WithdrawStuckETH() public onlyGovernance nonReentrant {
+        uint256 amount = address(this).balance;
+        require(amount > 0, "No ETH available to withdraw");
+
+        (bool successDevelopment, ) = developmentWallet.call{value: amount}("");
+        require(successDevelopment, "Development transfer failed");
+        emit FundsWithdrawn("All Funds", amount, block.timestamp);
+    }
 
     // this will use in tokens for ensuring enough dav token presents at the time
     function getRequiredDAVAmount() public view returns (uint256) {
@@ -266,7 +282,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         return (userBalance * 1e18) / totalSupply; // Return percentage as a scaled value (1e18 = 100%).
     }
 
-    receive() external payable nonReentrant {
+    receive() external payable {
         revert("Direct ETH transfers not allowed");
     }
 }

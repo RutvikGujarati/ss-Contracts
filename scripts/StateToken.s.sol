@@ -6,7 +6,7 @@ import "../src/MainTokens/StateToken.sol";
 
 contract DeployState is Script {
     function run() external {
-        address davToken = 0xCf7A569E5f90ae07402693288Bdd34fbA646d80a;
+        address davToken = 0x184311E6522Bec0Faa79c87e491717325416Ad1A;
         address governance = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
 
         vm.startBroadcast();

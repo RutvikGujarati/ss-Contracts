@@ -333,6 +333,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function burnTokens() external {
         AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         require(cycle.isInitialized, "Auction not initialized for this pair");
+        // require(
+        //     dav.balanceOf(msg.sender) >= 10,
+        //     "required enough dav to paritcipate"
+        // );
 
         uint256 currentTime = block.timestamp;
 
@@ -592,7 +596,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             uint256 decrementFactor = 100 - currentCycle; // Each cycle decreases amount by 1%
             return (baseAmount * decrementFactor) / 100;
         }
-		return baseAmount;
+        return baseAmount;
     }
     function getSwapAmounts(
         uint256 _amountIn,

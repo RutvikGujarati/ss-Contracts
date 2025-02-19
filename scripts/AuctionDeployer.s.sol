@@ -5,9 +5,9 @@ import "forge-std/Script.sol";
 import {Ratio_Swapping_Auctions_V1_1} from "../src/AuctionSwap/OrxaSwap.sol";
 contract AuctionSwapDeploy is Script {
     function run() external {
-        address davToken = 0xCf7A569E5f90ae07402693288Bdd34fbA646d80a;
-        address StatToken = 0x74946B123EcE457c2d72e2254EEe678d60C6f569;
-        address Fluxin = 0xEEBBA46F588BB88c2e49A5B51e49f05A56dBA2C6;
+        address davToken = 0x184311E6522Bec0Faa79c87e491717325416Ad1A;
+        address StatToken = 0x7B5BEFD18836DF1E72a21B328D34cc35aA1743b5;
+        address Fluxin = 0x38B34C2fD8c41E040636110f801Ab4CD2cA71E53;
         address governance = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
 
         vm.startBroadcast();
