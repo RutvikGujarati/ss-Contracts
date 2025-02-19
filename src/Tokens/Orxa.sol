@@ -113,7 +113,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
         uint256 maxAdditionalMint = 1000000000000 ether;
-        require(totalSupply() + amount <= MAX_SUPPLY, "cap limit exceeded");
+        require(totalSupply() + amount <= maxSupply, "cap limit exceeded");
         require(
             ExtraMintAllowed + amount <= maxAdditionalMint,
             "Minting limit exceeded"
