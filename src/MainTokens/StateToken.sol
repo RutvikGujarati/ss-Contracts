@@ -140,7 +140,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         require(user != address(0), "StateToken: Invalid user address");
         require(msg.sender == tx.origin, "Orxa: Caller cannot be a contract");
         require(msg.sender.code.length == 0, "Orxa: Caller must be an EOA");
-        uint256 currentDavHolding = davToken.balanceOf(user);
+        uint256 currentDavHolding = davToken.getUserMintedAmount();
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
             ? currentDavHolding - lastHolding

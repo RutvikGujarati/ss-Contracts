@@ -581,7 +581,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     function calculateAuctionEligibleAmount() public view returns (uint256) {
         uint256 currentCycle = getCurrentAuctionCycle();
-        uint256 davbalance = dav.balanceOf(msg.sender);
+        uint256 davbalance = dav.getUserMintedAmount();
         bool isReverse = isReverseAuctionActive();
         if (davbalance == 0) {
             return 0;
@@ -615,7 +615,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentRatioInEther = currentRatio / 1e18;
         require(currentRatioInEther > 0, "Invalid ratio");
 
-        uint256 userBalance = dav.balanceOf(msg.sender);
+        uint256 userBalance = dav.getUserMintedAmount();
         if (userBalance == 0) {
             return 0;
         }

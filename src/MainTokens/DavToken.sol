@@ -47,7 +47,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     mapping(address => bool) private isDAVHolder;
     mapping(address => uint256) public holderRewards;
     mapping(address => uint256) public userRewardPerTokenPaid;
-
+    mapping(address => uint256) public userMintedAmount;
     address private governanceAddress;
 
     constructor(
@@ -171,7 +171,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
 
         liquidityFunds += liquidityShare;
         developmentFunds += developmentShare;
-
+        userMintedAmount[msg.sender] += amount;
         if (!isDAVHolder[msg.sender]) {
             isDAVHolder[msg.sender] = true;
             davHoldersCount += 1; // ✅ Efficient tracking
@@ -270,6 +270,10 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
 
     function getDAVHoldersCount() external view returns (uint256) {
         return davHoldersCount;
+    }
+
+    function getUserMintedAmount() external view returns (uint256) {
+        return userMintedAmount[msg.sender];
     }
 
     function isHolder(address account) external view returns (bool) {

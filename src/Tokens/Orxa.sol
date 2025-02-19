@@ -16,7 +16,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     uint256 public DECAY_INTERVAL = 5 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
-    uint256 public constant multiplier = 100000000; // 100 million for extra mints
+    uint256 public constant multiplier = 100000000; // 100 million tokens per DAV holding unit
     uint256 ExtraMintAllowed;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
@@ -113,6 +113,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         require(amount > 0, "mint amount must be greater than zero");
         require(governanceAddress != address(0), "address should not be zero");
         uint256 maxAdditionalMint = 1000000000000 ether;
+
         require(totalSupply() + amount <= maxSupply, "cap limit exceeded");
         require(
             ExtraMintAllowed + amount <= maxAdditionalMint,
@@ -130,7 +131,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         require(user != address(0), "Orxa: Invalid user address");
         require(msg.sender == tx.origin, "Orxa: Caller cannot be a contract");
         require(msg.sender.code.length == 0, "Orxa: Caller must be an EOA");
-        uint256 currentDavHolding = davToken.balanceOf(user);
+        uint256 currentDavHolding = davToken.getUserMintedAmount();
         require(msg.sender == user, "Orxa: Invalid sender");
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
@@ -168,8 +169,10 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             "Orxa: No new holdings to calculate minting"
         );
         // multiplier is for extra mints
-        uint256 amountToMint = ((multiplier * 1e18) * mintableHoldings) /
+        uint256 scaledMintableHoldings = (mintableHoldings * multiplier);
+        uint256 amountToMint = (scaledMintableHoldings * 1e18) /
             (10 ** uint256(decimals()));
+
         require(
             totalSupply() + reward + amountToMint <= maxSupply,
             "Orxa: Max supply exceeded"
