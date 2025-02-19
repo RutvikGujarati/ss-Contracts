@@ -27,9 +27,6 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     /* liquidity and development wallets withdrawal amount*/
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
-
-    //Only use to check if there any dav holders
-    address[] public davHolders;
     //it is used in other token contracts
     uint256 public davHoldersCount;
     uint256 public totalRewardPerTokenStored;
@@ -101,7 +98,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         address spender,
         uint256 amount
     ) public override whenTransfersAllowed returns (bool) {
-        return super.transfer(spender, amount);
+        return super.approve(spender, amount);
     }
     function transfer(
         address recipient,
@@ -157,7 +154,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         uint256 holderShare = 0; // Initialize to zero
 
         // ✅ Only calculate holderShare if there are DAV holders
-        if (davHolders.length > 0) {
+        if (davHoldersCount > 0) {
             holderShare = (msg.value * 10) / 100;
             if (totalSupply() == 0) {
                 uint256 split = holderShare / 2;
@@ -177,7 +174,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
 
         if (!isDAVHolder[msg.sender]) {
             isDAVHolder[msg.sender] = true;
-            davHolders.push(msg.sender);
+            davHoldersCount += 1; // ✅ Efficient tracking
             emit HolderAdded(msg.sender);
         }
 
@@ -271,17 +268,14 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         return davAmount >= maxDAV ? maxDAV : davAmount;
     }
 
-    function getDAVHoldings(address user) public view returns (uint256) {
-        return balanceOf(user);
-    }
-    function getDAVHolderAt(uint256 index) external view returns (address) {
-        require(index < davHolders.length, "Index out of bounds");
-        return davHolders[index];
+    function getDAVHoldersCount() external view returns (uint256) {
+        return davHoldersCount;
     }
 
-    function getDAVHoldersCount() external view returns (uint256) {
-        return davHolders.length;
+    function isHolder(address account) external view returns (bool) {
+        return isDAVHolder[account];
     }
+
     function getUserHoldingPercentage(
         address user
     ) public view returns (uint256) {
