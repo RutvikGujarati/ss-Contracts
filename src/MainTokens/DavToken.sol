@@ -27,7 +27,10 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     /* liquidity and development wallets withdrawal amount*/
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
+
+    //Only use to check if there any dav holders
     address[] public davHolders;
+    //it is used in other token contracts
     uint256 public davHoldersCount;
     uint256 public totalRewardPerTokenStored;
     // follows for do not allow dav token transafers
