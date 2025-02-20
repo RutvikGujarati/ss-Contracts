@@ -165,25 +165,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             "StateToken: No new holdings to calculate minting"
         );
 
-        // Ensure minting does not exceed supply limits
-        uint256 remainingSupply = MAX_SUPPLY - totalSupply();
-
-        // Adjust multiplier dynamically if minting exceeds remaining supply
-        uint256 scaledMultiplier = multiplier;
-        uint256 scaledMintableHoldings = mintableHoldings * scaledMultiplier;
-
-        if (
-            (scaledMintableHoldings * 1e18) / (10 ** uint256(decimals())) >
-            remainingSupply
-        ) {
-            scaledMultiplier =
-                (remainingSupply * (10 ** uint256(decimals()))) /
-                (mintableHoldings * 1e18);
-            scaledMintableHoldings = mintableHoldings * scaledMultiplier;
-        }
-
-        uint256 amountToMint = (scaledMintableHoldings * 1e18) /
-            (10 ** uint256(decimals()));
+        uint256 amountToMint = mintableHoldings * multiplier;
 
         require(
             totalSupply() + reward + amountToMint <= MAX_SUPPLY,
@@ -206,17 +188,21 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         uint256 davAmount
     ) public view returns (uint256) {
         uint256 supply_p = MAX_SUPPLY * 10;
-        uint256 denominator = 5000000 * 1000; // Equivalent to 5e9
+        uint256 denominator = 5e9; // Equivalent to 5000000 * 1000
+        uint256 precisionFactor = 1e18; // Scaling factor to maintain precision
 
-        // Prevent overflow by dividing before multiplying when possible
         uint256 baseReward;
 
         if (davAmount > type(uint256).max / supply_p) {
-            // If multiplying `davAmount * supply_p` risks overflow, divide first
-            baseReward = (davAmount / denominator) * (supply_p / 1e18);
+            // If `davAmount * supply_p` risks overflow, scale first before division
+            baseReward =
+                ((davAmount * precisionFactor) / denominator) *
+                (supply_p / precisionFactor);
         } else {
-            // Otherwise, proceed normally
-            baseReward = (davAmount * supply_p) / (denominator * 1e18);
+            // Maintain precision while avoiding overflow
+            baseReward =
+                (davAmount * supply_p) /
+                (denominator * precisionFactor);
         }
 
         return baseReward;
