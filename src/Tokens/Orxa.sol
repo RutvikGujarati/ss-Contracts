@@ -111,7 +111,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function distributeReward(address user) external nonReentrant {
         // **Checks**
         require(user != address(0), "Orxa: Invalid user address");
-        uint256 currentDavHolding = davToken.getUserMintedAmount(msg.sender);
+        uint256 currentDavHolding = davToken.getUserMintedAmount(user);
         require(msg.sender == user, "Orxa: Invalid sender");
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
@@ -149,7 +149,24 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             "Orxa: No new holdings to calculate minting"
         );
         // multiplier is for extra mints
-        uint256 scaledMintableHoldings = (mintableHoldings * multiplier);
+
+        // Ensure minting does not exceed supply limits
+        uint256 remainingSupply = maxSupply - totalSupply();
+
+        // Adjust multiplier dynamically if minting exceeds remaining supply
+        uint256 scaledMultiplier = multiplier;
+        uint256 scaledMintableHoldings = mintableHoldings * scaledMultiplier;
+
+        if (
+            (scaledMintableHoldings * 1e18) / (10 ** uint256(decimals())) >
+            remainingSupply
+        ) {
+            scaledMultiplier =
+                (remainingSupply * (10 ** uint256(decimals()))) /
+                (mintableHoldings * 1e18);
+            scaledMintableHoldings = mintableHoldings * scaledMultiplier;
+        }
+
         uint256 amountToMint = (scaledMintableHoldings * 1e18) /
             (10 ** uint256(decimals()));
 
@@ -174,10 +191,18 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         uint256 davAmount
     ) public view returns (uint256) {
         uint256 supply_p = maxSupply * 10;
-        uint256 denominator = 5000000 * 1000; // Keep it in whole numbers to avoid premature division
+        uint256 denominator = 5000000 * 1000; // Equivalent to 5e9
 
-        // Multiply first, then divide to maintain precision
-        uint256 baseReward = (davAmount * supply_p) / (denominator * 1e18);
+        // Prevent overflow by dividing before multiplying when possible
+        uint256 baseReward;
+
+        if (davAmount > type(uint256).max / supply_p) {
+            // If multiplying `davAmount * supply_p` risks overflow, divide first
+            baseReward = (davAmount / denominator) * (supply_p / 1e18);
+        } else {
+            // Otherwise, proceed normally
+            baseReward = (davAmount * supply_p) / (denominator * 1e18);
+        }
 
         return baseReward;
     }
