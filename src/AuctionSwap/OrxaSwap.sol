@@ -89,6 +89,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     mapping(address => uint256) public maxSupply; // Max supply per token
     mapping(address => mapping(uint256 => bool)) public burnOccurredInCycle;
     mapping(uint256 => bool) public reverseAuctionActive;
+    mapping(address => uint256) public TotalStateBurnedByUser;
     mapping(address => mapping(address => AuctionCycle)) public auctionCycles;
 
     event TokensBurned(
@@ -309,6 +310,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
                 amountIn
             );
             TotalBurnedStates += amountIn;
+            TotalStateBurnedByUser[user] += amountIn;
             IERC20(outputToken).safeTransfer(spender, amountOut);
         } else {
             userSwapInfo.hasSwapped = true;
@@ -644,6 +646,9 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
     function getTotalStateBurned() public view returns (uint256) {
         return TotalBurnedStates;
+    }
+    function getTotalStateBurnedByUser(address user) public view returns (uint256) {
+        return TotalStateBurnedByUser[user];
     }
 
     function getTotalBountyCollected() public view returns (uint256) {
