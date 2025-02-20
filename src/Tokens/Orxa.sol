@@ -173,7 +173,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function calculateBaseReward(
         uint256 davAmount
     ) public view returns (uint256) {
-        uint256 supply_p = MAX_SUPPLY * 10;
+        uint256 supply_p = maxSupply * 10;
         uint256 denominator = 5000000 * 1000; // Keep it in whole numbers to avoid premature division
 
         // Multiply first, then divide to maintain precision
