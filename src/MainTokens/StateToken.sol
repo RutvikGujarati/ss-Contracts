@@ -127,8 +127,8 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         uint256 amount
     ) public onlyGovernance nonReentrant {
         require(amount > 0, "mint amount must be greater than zero");
-        require(amount <= MAX_SUPPLY, "Minting limit exceeded");
         require(governanceAddress != address(0), "address should not be zero");
+        require(totalSupply() + amount <= MAX_SUPPLY, "Exceeds MAX_SUPPLY");
         _mint(governanceAddress, amount);
     }
 
@@ -138,9 +138,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     function distributeReward(address user) external nonReentrant {
         // **Checks**
         require(user != address(0), "StateToken: Invalid user address");
-        require(msg.sender == tx.origin, "Orxa: Caller cannot be a contract");
-        require(msg.sender.code.length == 0, "Orxa: Caller must be an EOA");
-        uint256 currentDavHolding = davToken.getUserMintedAmount();
+        uint256 currentDavHolding = davToken.getUserMintedAmount(msg.sender);
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
             ? currentDavHolding - lastHolding
@@ -176,9 +174,22 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             mintableHoldings > 0,
             "StateToken: No new holdings to calculate minting"
         );
+        uint256 remainingSupply = MAX_SUPPLY - totalSupply();
+        uint256 scaledMultiplier = multiplier;
 
-        uint256 amountToMint = ((multiplier * 1e18) * mintableHoldings) /
+        uint256 CheckamountToMint = ((multiplier * 1e18) * mintableHoldings) /
             (10 ** uint256(decimals()));
+			
+        // Scale multiplier down if supply is running low
+        if (CheckamountToMint > remainingSupply) {
+            scaledMultiplier =
+                (remainingSupply * (10 ** decimals())) /
+                (mintableHoldings * 1e18);
+        }
+
+        uint256 amountToMint = ((scaledMultiplier * 1e18) * mintableHoldings) /
+            (10 ** uint256(decimals()));
+
         require(
             totalSupply() + reward + amountToMint <= MAX_SUPPLY,
             "StateToken: Max supply exceeded"

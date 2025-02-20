@@ -272,8 +272,8 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
         return davHoldersCount;
     }
 
-    function getUserMintedAmount() external view returns (uint256) {
-        return userMintedAmount[msg.sender];
+    function getUserMintedAmount(address user) external view returns (uint256) {
+        return userMintedAmount[user];
     }
 
     function isHolder(address account) external view returns (bool) {
