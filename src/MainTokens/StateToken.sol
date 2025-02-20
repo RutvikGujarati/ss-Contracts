@@ -76,18 +76,6 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         MAX_SUPPLY = newMaxSupply;
     }
 
-    function changeTimeStamp(uint256 newTimeStamp) external onlyGovernance {
-        require(
-            newTimeStamp > block.timestamp,
-            "StateToken: New timestamp must be in the future"
-        );
-        require(
-            newTimeStamp != REWARD_DECAY_START,
-            "StateToken: New timestamp must be different from the current"
-        );
-        REWARD_DECAY_START = newTimeStamp;
-    }
-
     function changeInterval(uint256 newInterval) external onlyGovernance {
         require(
             newInterval > 0,
@@ -174,20 +162,8 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             mintableHoldings > 0,
             "StateToken: No new holdings to calculate minting"
         );
-        uint256 remainingSupply = MAX_SUPPLY - totalSupply();
-        uint256 scaledMultiplier = multiplier;
-
-        uint256 CheckamountToMint = ((multiplier * 1e18) * mintableHoldings) /
-            (10 ** uint256(decimals()));
-			
-        // Scale multiplier down if supply is running low
-        if (CheckamountToMint > remainingSupply) {
-            scaledMultiplier =
-                (remainingSupply * (10 ** decimals())) /
-                (mintableHoldings * 1e18);
-        }
-
-        uint256 amountToMint = ((scaledMultiplier * 1e18) * mintableHoldings) /
+        uint256 scaledMintableHoldings = (mintableHoldings * multiplier);
+        uint256 amountToMint = (scaledMintableHoldings * 1e18) /
             (10 ** uint256(decimals()));
 
         require(
@@ -210,8 +186,13 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     function calculateBaseReward(
         uint256 davAmount
     ) public view returns (uint256) {
-        // Multiply first to retain precision, then divide
-        return (davAmount * (MAX_SUPPLY * 10)) / (5000000 * 1000 * 1e18);
+        uint256 supply_p = MAX_SUPPLY * 10;
+        uint256 denominator = 5000000 * 1000; // Keep it in whole numbers to avoid premature division
+
+        // Multiply first, then divide to maintain precision
+        uint256 baseReward = (davAmount * supply_p) / (denominator * 1e18);
+
+        return baseReward;
     }
 
     /**
@@ -229,6 +210,13 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         return totalDecayPercentage > 100 ? 100 : totalDecayPercentage;
     }
 
+    //updating Governanace if old is deprecated
+    function updateGovernance(address newGov) external onlyGovernance {
+        require(newGov != address(0), "Invalid address");
+        isAuthorized[governanceAddress] = false;
+        governanceAddress = newGov;
+        isAuthorized[newGov] = true;
+    }
     /**
      * @dev Get the current decay percentage based on the block timestamp.
      */
@@ -236,6 +224,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
         return getDecayPercentageAtTime(block.timestamp);
     }
 
+    /* Governanace able to transfer tokens for providing liquidity */
     function transferToken(
         uint256 amount
     ) external onlyGovernance nonReentrant {

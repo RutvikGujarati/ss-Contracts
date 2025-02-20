@@ -60,18 +60,6 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         isAuthorized[Governance] = true;
     }
 
-    function changeTimeStamp(uint256 newTimeStamp) external onlyGovernance {
-        require(
-            newTimeStamp > block.timestamp,
-            "Orxa: New timestamp must be in the future"
-        );
-        require(
-            newTimeStamp != REWARD_DECAY_START,
-            "Orxa: New timestamp must be different from the current"
-        );
-        REWARD_DECAY_START = newTimeStamp;
-    }
-
     function changeInterval(uint256 newInterval) external onlyGovernance {
         require(newInterval > 0, "Orxa: Interval must be greater than zero");
         require(
@@ -185,8 +173,13 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function calculateBaseReward(
         uint256 davAmount
     ) public view returns (uint256) {
-        // Multiply first to retain precision, then divide
-        return (davAmount * (maxSupply * 10)) / (5000000 * 1000 * 1e17);
+        uint256 supply_p = MAX_SUPPLY * 10;
+        uint256 denominator = 5000000 * 1000; // Keep it in whole numbers to avoid premature division
+
+        // Multiply first, then divide to maintain precision
+        uint256 baseReward = (davAmount * supply_p) / (denominator * 1e18);
+
+        return baseReward;
     }
     function getMax_supply() public view returns (uint256) {
         return maxSupply;
@@ -212,7 +205,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function getCurrentDecayPercentage() public view returns (uint256) {
         return getDecayPercentageAtTime(block.timestamp);
     }
-
+    /* Governanace able to transfer tokens for providing liquidity to tokens */
     function transferToken(
         uint256 amount
     ) external onlyGovernance nonReentrant {
@@ -226,6 +219,13 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         ERC20(address(this)).safeTransfer(governanceAddress, amount);
     }
 
+    // updating Governanace if old is deprecated
+    function updateGovernance(address newGov) external onlyGovernance {
+        require(newGov != address(0), "Invalid address");
+        isAuthorized[governanceAddress] = false;
+        governanceAddress = newGov;
+        isAuthorized[newGov] = true;
+    }
     /**
      * @dev View reward details for a user.
      */
