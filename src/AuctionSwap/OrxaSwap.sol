@@ -35,9 +35,9 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         0x0000000000000000000000000000000000000369;
 
     address public stateToken;
-    address public pairAddress = 0x361aFa3F5EF839bED6071c9F0c225b078eB8089a; // for orxa
-    address public orxaToken = 0x6F01eEc1111748B66f735944b18b0EB2835aE201;
-    address public pstateToken = 0x63CC0B2CA22b260c7FD68EBBaDEc2275689A3969;
+    address public pairAddress; // for orxa
+    address public orxaToken;
+    address public pstateToken;
     address public governanceAddress;
 
     modifier onlyGovernance() {
@@ -80,7 +80,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     mapping(address => Vault) public vaults;
     mapping(address => BurnInfo) public burnInfo;
-    mapping(address => mapping(address => uint256)) public RatioTarget;
+    uint256 public RatioTarget;
     mapping(address => mapping(address => bool)) public approvals;
     mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
@@ -124,11 +124,22 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     );
     event AuctionIntervalUpdated(uint256 newInterval);
 
-    constructor(address state, address davToken, address _orxa, address _gov) {
+    constructor(
+        address state,
+        address davToken,
+        address _orxa,
+        address _gov,
+        address _pairState,
+        address _pairOrxa,
+        address _pairAddress
+    ) {
         governanceAddress = _gov;
         orxa = Orxa(_orxa);
         orxaAddress = _orxa;
         stateToken = state;
+        pairAddress = _pairAddress;
+        orxaToken = _pairOrxa;
+        pstateToken = _pairState;
         dav = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(davToken));
     }
 
@@ -140,14 +151,16 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         require(reserve0 > 0 && reserve1 > 0, "Invalid reserves"); // ✅ Prevents division by zero
 
-        // Ensure orxa/PSTATE ratio is returned
+        uint256 ratio;
         if (token0 == orxaToken && token1 == pstateToken) {
-            return (uint256(reserve1) * 1e18) / uint256(reserve0);
+            ratio = (uint256(reserve1) * 1e18) / uint256(reserve0);
         } else if (token0 == pstateToken && token1 == orxaToken) {
-            return (uint256(reserve0) * 1e18) / uint256(reserve1);
+            ratio = (uint256(reserve0) * 1e18) / uint256(reserve1);
         } else {
             revert("Invalid pair, does not match orxa/PSTATE");
         }
+
+        return ratio < 1e18 ? 1e18 : ratio; // Ensure ratio is at least 1
     }
 
     function depositTokens(
@@ -208,7 +221,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentRatioInEther = currentRatio / 1e18;
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatioInEther >= RatioTarget[orxaAddress][stateToken]
+            currentRatioInEther >= getRatioTarget()
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
@@ -221,13 +234,13 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatioInEther >= RatioTarget[orxaAddress][stateToken]
+                currentRatioInEther >= getRatioTarget()
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
         } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
-            currentRatioInEther >= RatioTarget[orxaAddress][stateToken]
+            currentRatioInEther >= getRatioTarget()
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
         }
@@ -394,7 +407,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
         require(ratioTarget > 0, "Target ratio must be greater than zero");
 
-        RatioTarget[orxaAddress][stateToken] = ratioTarget;
+        RatioTarget = ratioTarget;
     }
 
     function setAuctionDuration(
@@ -407,6 +420,15 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         burnWindowDuration = _auctionDuration;
     }
 
+    function setAddressOfPair(
+        address _pairState,
+        address _pairOrxa,
+        address _pairAddress
+    ) public onlyGovernance {
+        pairAddress = _pairAddress;
+        orxaToken = _pairOrxa;
+        pstateToken = _pairState;
+    }
     function setAuctionInterval(uint256 _newInterval) external onlyGovernance {
         require(_newInterval > 0, "Interval must be greater than 0");
         auctionInterval = _newInterval;
@@ -437,7 +459,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function getRatioTarget() public view returns (uint256) {
-        return RatioTarget[orxaAddress][stateToken];
+        return RatioTarget;
     }
 
     function isAuctionActive() public view returns (bool) {
@@ -583,6 +605,9 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     function calculateAuctionEligibleAmount() public view returns (uint256) {
         uint256 currentCycle = getCurrentAuctionCycle();
+        if (currentCycle > 100) {
+            currentCycle = 100; // Cap the cycle to 100 to prevent underflow
+        }
         uint256 davbalance = dav.getUserMintedAmount(msg.sender);
         bool isReverse = isReverseAuctionActive();
         if (davbalance == 0) {
@@ -647,7 +672,9 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function getTotalStateBurned() public view returns (uint256) {
         return TotalBurnedStates;
     }
-    function getTotalStateBurnedByUser(address user) public view returns (uint256) {
+    function getTotalStateBurnedByUser(
+        address user
+    ) public view returns (uint256) {
         return TotalStateBurnedByUser[user];
     }
 
