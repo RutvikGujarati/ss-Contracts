@@ -105,7 +105,8 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         address orxaAddress,
         address stateToken
     );
-
+    event BurnRateUpdated(uint256 newBurnRate);
+    event AuctionDurationUpdated(uint256 newAuctionDuration);
     event TokensDeposited(address indexed token, uint256 amount);
     event AuctionStarted(
         uint256 startTime,
@@ -232,7 +233,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentRatio = getRatioPrice();
         uint256 currentRatioInEther = currentRatio / 1e18;
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
-		uint256 _RatioTarget = getRatioTarget();
+        uint256 _RatioTarget = getRatioTarget();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
@@ -331,9 +332,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             userSwapInfo.hasSwapped = true;
             IERC20(inputToken).safeTransferFrom(
                 spender,
-                address(this),
+                BURN_ADDRESS,
                 amountIn
             );
+			TotalTokensBurned += amountIn;
             IERC20(outputToken).safeTransfer(spender, amountOut);
         }
 
@@ -408,7 +410,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
         require(ratioTarget > 0, "Target ratio must be greater than zero");
-
         RatioTarget = ratioTarget;
     }
 
@@ -416,6 +417,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 _auctionDuration
     ) external onlyGovernance {
         auctionDuration = _auctionDuration;
+        emit AuctionDurationUpdated(_auctionDuration);
     }
 
     function setBurnDuration(uint256 _auctionDuration) external onlyGovernance {
@@ -445,7 +447,9 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function setBurnRate(uint256 _burnRate) external onlyGovernance {
         require(_burnRate > 0, "Burn rate must be greater than 0");
         burnRate = _burnRate;
+        emit BurnRateUpdated(_burnRate);
     }
+
     function getUserHasSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return

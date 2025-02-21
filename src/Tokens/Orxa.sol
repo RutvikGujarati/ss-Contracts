@@ -25,6 +25,8 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     mapping(address => uint256) public mintDecayPercentage;
     mapping(address => uint256) public cumulativeMintableHoldings;
     mapping(address => uint256) private lastTransferTimestamp;
+    mapping(address => uint256) private lastGovernanceUpdate;
+
     address public governanceAddress;
 
     event RewardDistributed(address indexed user, uint256 amount);
@@ -244,11 +246,19 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     }
 
     // updating Governanace if old is deprecated
+
     function updateGovernance(address newGov) external onlyGovernance {
         require(newGov != address(0), "Invalid address");
+        require(
+            block.timestamp >=
+                lastGovernanceUpdate[governanceAddress] + COOLDOWN_PERIOD,
+            "Governance update cooldown period not yet passed"
+        );
+
         isAuthorized[governanceAddress] = false;
         governanceAddress = newGov;
         isAuthorized[newGov] = true;
+        lastGovernanceUpdate[newGov] = block.timestamp;
     }
     /**
      * @dev View reward details for a user.
