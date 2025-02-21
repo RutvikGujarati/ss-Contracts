@@ -20,15 +20,16 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     uint256 public DECAY_INTERVAL = 10 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
+    uint256 private constant COOLDOWN_PERIOD = 24 hours;
     uint256 ExtraMintAllowed;
-    uint256 public constant multiplier = 1000000000;
+    uint256 public constant multiplier = 10000000;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
     mapping(address => uint256) public lastDavHolding;
     mapping(address => uint256) public mintDecayPercentage;
     mapping(address => uint256) public cumulativeMintableHoldings;
-
+    mapping(address => uint256) private lastTransferTimestamp;
     address public governanceAddress;
 
     event RewardDistributed(address indexed user, uint256 amount);
@@ -238,6 +239,7 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     }
 
     /* Governanace able to transfer tokens for providing liquidity */
+
     function transferToken(
         uint256 amount
     ) external onlyGovernance nonReentrant {
@@ -247,7 +249,17 @@ contract STATE_Token_V1_1_Ratio_Swapping is
             "Insufficient contract balance"
         );
         require(governanceAddress != address(0), "Invalid governance address");
+        require(
+            amount <= balanceOf(address(this)) / 10,
+            "Transfer amount exceeds 10% of contract balance"
+        );
+        require(
+            block.timestamp >=
+                lastTransferTimestamp[msg.sender] + COOLDOWN_PERIOD,
+            "Transfer cooldown period not yet passed"
+        );
 
+        lastTransferTimestamp[msg.sender] = block.timestamp;
         ERC20(address(this)).safeTransfer(governanceAddress, amount);
     }
 

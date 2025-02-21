@@ -16,13 +16,15 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     uint256 public DECAY_INTERVAL = 5 days;
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
-    uint256 public constant multiplier = 100000000; // 100 million tokens per DAV holding unit
+    uint256 private constant COOLDOWN_PERIOD = 24 hours;
+    uint256 public constant multiplier = 1000000; // 1 million tokens per DAV holding unit
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
     mapping(address => uint256) public lastDavHolding;
     mapping(address => uint256) public mintDecayPercentage;
     mapping(address => uint256) public cumulativeMintableHoldings;
+    mapping(address => uint256) private lastTransferTimestamp;
     address public governanceAddress;
 
     event RewardDistributed(address indexed user, uint256 amount);
@@ -217,6 +219,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         return getDecayPercentageAtTime(block.timestamp);
     }
     /* Governanace able to transfer tokens for providing liquidity to tokens */
+
     function transferToken(
         uint256 amount
     ) external onlyGovernance nonReentrant {
@@ -226,7 +229,17 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             "Insufficient contract balance"
         );
         require(governanceAddress != address(0), "Invalid governance address");
+        require(
+            amount <= balanceOf(address(this)) / 10,
+            "Transfer amount exceeds 10% of contract balance"
+        );
+        require(
+            block.timestamp >=
+                lastTransferTimestamp[msg.sender] + COOLDOWN_PERIOD,
+            "Transfer cooldown period not yet passed"
+        );
 
+        lastTransferTimestamp[msg.sender] = block.timestamp;
         ERC20(address(this)).safeTransfer(governanceAddress, amount);
     }
 
