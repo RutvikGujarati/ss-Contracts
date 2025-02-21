@@ -218,10 +218,11 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function checkAndActivateReverseAuction() internal {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         uint256 currentRatio = getRatioPrice();
+        uint256 _RatioTarget = getRatioTarget();
         uint256 currentRatioInEther = currentRatio / 1e18;
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatioInEther >= getRatioTarget()
+            currentRatioInEther >= _RatioTarget
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
@@ -231,16 +232,17 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentRatio = getRatioPrice();
         uint256 currentRatioInEther = currentRatio / 1e18;
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
+		uint256 _RatioTarget = getRatioTarget();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatioInEther >= getRatioTarget()
+                currentRatioInEther >= _RatioTarget
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
         } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
-            currentRatioInEther >= getRatioTarget()
+            currentRatioInEther >= _RatioTarget
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
         }
