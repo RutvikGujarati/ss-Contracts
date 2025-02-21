@@ -350,10 +350,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function burnTokens() external {
         AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
         require(cycle.isInitialized, "Auction not initialized for this pair");
-        // require(
-        //     dav.balanceOf(msg.sender) >= 10,
-        //     "required enough dav to paritcipate"
-        // );
+        require(
+            dav.balanceOf(msg.sender) >= 10,
+            "required enough dav to paritcipate"
+        );
 
         uint256 currentTime = block.timestamp;
 
