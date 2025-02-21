@@ -47,6 +47,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     uint256 public TotalBurnedStates;
     uint256 public TotalTokensBurned;
     uint256 public totalBounty;
+    uint256 private constant COOLDOWN_PERIOD = 24 hours;
 
     struct Vault {
         uint256 totalDeposited;
@@ -79,6 +80,8 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     mapping(uint256 => bool) public reverseAuctionActive;
     mapping(address => mapping(address => AuctionCycle)) public auctionCycles;
     mapping(address => uint256) public TotalStateBurnedByUser;
+    mapping(address => uint256) private lastGovernanceUpdate;
+
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
@@ -355,7 +358,17 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function setInAmountPercentage(uint256 amount) public onlyGovernance {
         percentage = amount;
     }
+    function updateGovernance(address newGov) external onlyGovernance {
+        require(newGov != address(0), "Invalid address");
+        require(
+            block.timestamp >=
+                lastGovernanceUpdate[governanceAddress] + COOLDOWN_PERIOD,
+            "Governance update cooldown period not yet passed"
+        );
 
+        governanceAddress = newGov;
+        lastGovernanceUpdate[newGov] = block.timestamp;
+    }
     function getUserHasSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return

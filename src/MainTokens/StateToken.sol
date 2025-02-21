@@ -30,6 +30,8 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     mapping(address => uint256) public mintDecayPercentage;
     mapping(address => uint256) public cumulativeMintableHoldings;
     mapping(address => uint256) private lastTransferTimestamp;
+    mapping(address => uint256) private lastGovernanceUpdate;
+
     address public governanceAddress;
 
     event RewardDistributed(address indexed user, uint256 amount);
@@ -227,9 +229,16 @@ contract STATE_Token_V1_1_Ratio_Swapping is
     //updating Governanace if old is deprecated
     function updateGovernance(address newGov) external onlyGovernance {
         require(newGov != address(0), "Invalid address");
+        require(
+            block.timestamp >=
+                lastGovernanceUpdate[governanceAddress] + COOLDOWN_PERIOD,
+            "Governance update cooldown period not yet passed"
+        );
+
         isAuthorized[governanceAddress] = false;
         governanceAddress = newGov;
         isAuthorized[newGov] = true;
+        lastGovernanceUpdate[newGov] = block.timestamp;
     }
     /**
      * @dev Get the current decay percentage based on the block timestamp.
