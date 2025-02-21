@@ -24,13 +24,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     uint256 public auctionInterval = 1 hours;
     uint256 public auctionDuration = 1 hours;
     uint256 public reverseDuration = 1 hours;
-    uint256 public burnWindowDuration = 1 hours;
     uint256 public inputAmountRate = 1;
     Orxa public orxa;
     uint256 public percentage = 1;
     address public orxaAddress;
-    uint256 public burnRate = 100000; // Default burn rate in (0.00001)
-    uint256 public MaxLimitOfStateBurning = 10000000000000 ether;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
@@ -72,40 +69,22 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         bool hasReverseSwap;
         uint256 cycle;
     }
-    struct BurnInfo {
-        address user;
-        uint256 remainingamount;
-        uint256 bountyAMount;
-        uint256 time;
-    }
+
     mapping(address => Vault) public vaults;
-    mapping(address => BurnInfo) public burnInfo;
     uint256 public RatioTarget;
     mapping(address => mapping(address => bool)) public approvals;
-    mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
-    mapping(address => mapping(uint256 => bool)) public burnOccurredInCycle;
     mapping(uint256 => bool) public reverseAuctionActive;
-    mapping(address => uint256) public TotalStateBurnedByUser;
     mapping(address => mapping(address => AuctionCycle)) public auctionCycles;
-
-    event TokensBurned(
-        address indexed user,
-        address indexed token,
-        uint256 burnedAmount,
-        uint256 rewardAmount
-    );
-
+    mapping(address => uint256) public TotalStateBurnedByUser;
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
         address orxaAddress,
         address stateToken
     );
-    event BurnRateUpdated(uint256 newBurnRate);
     event AuctionDurationUpdated(uint256 newAuctionDuration);
     event TokensDeposited(address indexed token, uint256 amount);
     event AuctionStarted(
@@ -203,11 +182,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             isInitialized: true
         });
 
-        uint256 newCycle = (currentTime - cycle.firstAuctionStart) /
-            auctionDuration +
-            1;
-        lastBurnCycle[orxaAddress][stateToken] = newCycle - 1;
-        lastBurnCycle[stateToken][orxaAddress] = newCycle - 1;
         emit AuctionStarted(
             currentTime,
             currentTime + auctionDuration,
@@ -335,7 +309,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
                 BURN_ADDRESS,
                 amountIn
             );
-			TotalTokensBurned += amountIn;
+            TotalTokensBurned += amountIn;
             IERC20(outputToken).safeTransfer(spender, amountOut);
         }
 
@@ -349,65 +323,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         checkAndActivateReverseAuction();
     }
 
-    function burnTokens() external {
-        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
-        require(cycle.isInitialized, "Auction not initialized for this pair");
-        require(
-            dav.balanceOf(msg.sender) >= 10,
-            "required enough dav to paritcipate"
-        );
-
-        uint256 currentTime = block.timestamp;
-
-        // Check if the auction is inactive before proceeding
-        require(!isAuctionActive(), "Auction still active");
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-        uint256 auctionEndTime = cycle.firstAuctionStart +
-            currentCycle *
-            fullCycleLength -
-            auctionInterval;
-
-        // Ensure we're within the burn window (after auction but before interval ends)
-        require(
-            currentTime >= auctionEndTime &&
-                currentTime < auctionEndTime + burnWindowDuration,
-            "Burn window has passed or not started"
-        );
-
-        // Prevent burn if it has already occurred in this cycle
-        require(
-            !burnOccurredInCycle[orxaAddress][currentCycle],
-            "Burn already occurred for this cycle"
-        );
-
-        uint256 burnAmount = (orxa.balanceOf(address(this)) * 1) / burnRate;
-
-        burnOccurredInCycle[orxaAddress][currentCycle] = true;
-        lastBurnCycle[orxaAddress][stateToken] = currentCycle;
-        lastBurnTime[orxaAddress][stateToken] = currentTime;
-
-        // Reward user with 1% of burn amount
-        uint256 reward = burnAmount / 100;
-        totalBounty += reward;
-        orxa.transfer(msg.sender, reward);
-
-        // Burn the remaining tokens
-        uint256 remainingBurnAmount = burnAmount - reward;
-
-        TotalTokensBurned += remainingBurnAmount;
-
-        require(
-            TotalTokensBurned < MaxLimitOfStateBurning,
-            "limit is reached of burning state token"
-        );
-        orxa.transfer(BURN_ADDRESS, remainingBurnAmount);
-
-        emit TokensBurned(msg.sender, orxaAddress, remainingBurnAmount, reward);
-    }
-
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
         require(ratioTarget > 0, "Target ratio must be greater than zero");
         RatioTarget = ratioTarget;
@@ -418,10 +333,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     ) external onlyGovernance {
         auctionDuration = _auctionDuration;
         emit AuctionDurationUpdated(_auctionDuration);
-    }
-
-    function setBurnDuration(uint256 _auctionDuration) external onlyGovernance {
-        burnWindowDuration = _auctionDuration;
     }
 
     function setAddressOfPair(
@@ -443,11 +354,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     function setInAmountPercentage(uint256 amount) public onlyGovernance {
         percentage = amount;
-    }
-    function setBurnRate(uint256 _burnRate) external onlyGovernance {
-        require(_burnRate > 0, "Burn rate must be greater than 0");
-        burnRate = _burnRate;
-        emit BurnRateUpdated(_burnRate);
     }
 
     function getUserHasSwapped(address user) public view returns (bool) {
@@ -543,72 +449,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 fullCycleLength = auctionDuration + auctionInterval;
         return timeSinceStart / fullCycleLength;
     }
-    function getBurnOccured() public view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
-        if (!cycle.isInitialized) {
-            return false;
-        }
-        uint256 currentTime = block.timestamp;
 
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-
-        return burnOccurredInCycle[orxaAddress][currentCycle];
-    }
-
-    function isBurnCycleActive() external view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
-        if (!cycle.isInitialized) {
-            return false;
-        }
-        uint256 currentTime = block.timestamp;
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-        uint256 auctionEndTime = cycle.firstAuctionStart +
-            currentCycle *
-            fullCycleLength -
-            auctionInterval;
-
-        if (
-            currentTime >= auctionEndTime &&
-            currentTime < auctionEndTime + burnWindowDuration
-        ) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    function getTimeLeftInBurnCycle() public view returns (uint256) {
-        AuctionCycle storage cycle = auctionCycles[orxaAddress][stateToken];
-        if (!cycle.isInitialized) {
-            return 0;
-        }
-
-        uint256 currentTime = block.timestamp;
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-        uint256 auctionEndTime = cycle.firstAuctionStart +
-            currentCycle *
-            fullCycleLength -
-            auctionInterval;
-
-        // Check if we are in the burn window
-        if (
-            currentTime >= auctionEndTime &&
-            currentTime < auctionEndTime + burnWindowDuration
-        ) {
-            return (auctionEndTime + burnWindowDuration) - currentTime;
-        }
-
-        // If the burn cycle is not active, return 0
-        return 0;
-    }
     function calculateAuctionEligibleAmount() public view returns (uint256) {
         uint256 currentCycle = getCurrentAuctionCycle();
         if (currentCycle > 100) {
