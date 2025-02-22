@@ -154,6 +154,24 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         // **No Interactions**
     }
 
+    /**
+     * @notice Mints reward tokens for the user based on accumulated rewards.
+     * @dev
+     * - The reward amount is strictly derived from `distributeReward()`.
+     * - A user can only mint what has been assigned to them in `userRewardAmount`.
+     * - The total minting process follows a controlled supply mechanism.
+     *
+     * Tokenomics:
+     * - The function mints only **10% of maxSupply** to users.
+     * - An **additional 10%** is minted to the contract itself to support Ratio Swapping auctions.
+     * - The combined minting (user + contract) is capped at **20% of maxSupply**.
+     *
+     * Safety Checks:
+     * - Ensures the user has rewards to mint (`userRewardAmount > 0`).
+     * - Prevents minting if there are no new eligible holdings (`cumulativeMintableHoldings > 0`).
+     * - Ensures total minting does not exceed **20% of maxSupply** per transaction.
+     * - Guarantees total token supply does not exceed `maxSupply`.
+     */
     function mintReward() external nonReentrant {
         // **Checks**
         uint256 reward = userRewardAmount[msg.sender];
@@ -164,23 +182,32 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             mintableHoldings > 0,
             "Orxa: No new holdings to calculate minting"
         );
+
+        // Define the maximum mintable amount (20% of maxSupply)
         uint256 maxMintable = (maxSupply * 20) / 100;
         require(
             (reward * 2) <= maxMintable,
             "Orxa: Exceeds 20% max supply limit"
         );
+
+        // Ensure total supply does not exceed maxSupply after minting
         require(
             totalSupply() + (reward * 2) <= maxSupply,
             "Orxa: Max supply exceeded"
         );
 
         // **Effects**
+        // Reset user reward and mintable holdings after minting
         userRewardAmount[msg.sender] = 0;
         cumulativeMintableHoldings[msg.sender] = 0;
 
         // **Interactions**
+        // Mint rewards to the user (10% of maxSupply over time)
         _mint(msg.sender, reward);
-        //this mint is going into the swapping vault
+
+        // Deposit an equal amount into the DAV vault (10% of maxSupply over time)
+        //Deposit minted token into the DAV vaults where pools are created to facilitate Ratio Swapping auctions.
+        // This supports Ratio Swapping auctions and ensures market stability
         _mint(address(this), reward);
     }
 
