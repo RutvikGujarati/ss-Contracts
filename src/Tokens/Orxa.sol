@@ -164,7 +164,11 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             mintableHoldings > 0,
             "Orxa: No new holdings to calculate minting"
         );
-
+        uint256 maxMintable = (maxSupply * 20) / 100;
+        require(
+            (reward * 2) <= maxMintable,
+            "Orxa: Exceeds 20% max supply limit"
+        );
         require(
             totalSupply() + (reward * 2) <= maxSupply,
             "Orxa: Max supply exceeded"
