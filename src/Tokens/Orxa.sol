@@ -180,6 +180,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
 
         // **Interactions**
         _mint(msg.sender, reward);
+        //this mint is going into the swapping vault
         _mint(address(this), reward);
     }
 
