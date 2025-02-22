@@ -17,6 +17,8 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
     uint256 private constant COOLDOWN_PERIOD = 24 hours;
+    uint256 public totalAirdropMinted;
+    uint256 public totalLiquidityMinted;
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
@@ -163,7 +165,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
      *
      * Tokenomics:
      * - The function mints only **10% of maxSupply** to users.
-     * - An **additional 10%** is minted to the contract itself to support Ratio Swapping auctions.
+     * - An **additional 10%** is minted to the contract itself to support liquidity providing.
      * - The combined minting (user + contract) is capped at **20% of maxSupply**.
      *
      * Safety Checks:
@@ -184,10 +186,13 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         );
 
         // Define the maximum mintable amount (20% of maxSupply)
-        uint256 maxMintable = (maxSupply * 20) / 100;
         require(
-            (reward * 2) <= maxMintable,
-            "Orxa: Exceeds 20% max supply limit"
+            totalAirdropMinted + reward <= (maxSupply * 10) / 100,
+            "Airdrop cap exceeded"
+        );
+        require(
+            totalLiquidityMinted + reward <= (maxSupply * 10) / 100,
+            "Liquidity cap exceeded"
         );
 
         // Ensure total supply does not exceed maxSupply after minting
@@ -200,7 +205,8 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
         // Reset user reward and mintable holdings after minting
         userRewardAmount[msg.sender] = 0;
         cumulativeMintableHoldings[msg.sender] = 0;
-
+        totalAirdropMinted += reward;
+        totalLiquidityMinted += reward;
         // **Interactions**
         // Mint rewards to the user (10% of maxSupply over time)
         _mint(msg.sender, reward);
