@@ -24,7 +24,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     uint256 public auctionInterval = 1 hours;
     uint256 public auctionDuration = 1 hours;
     uint256 public reverseDuration = 1 hours;
-    uint256 public inputAmountRate = 1;
     Orxa public orxa;
     uint256 public percentage = 1;
     address public orxaAddress;
@@ -90,13 +89,6 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     );
     event AuctionDurationUpdated(uint256 newAuctionDuration);
     event TokensDeposited(address indexed token, uint256 amount);
-    event AuctionStarted(
-        uint256 startTime,
-        uint256 endTime,
-        address orxaAddress,
-        address stateToken,
-        uint256 collectionPercentage
-    );
 
     event TokensSwapped(
         address indexed user,
@@ -229,7 +221,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function swapTokens(address user) public nonReentrant {
         require(stateToken != address(0), "State token cannot be null");
         require(
-            dav.balanceOf(msg.sender) >= dav.getRequiredDAVAmount(),
+            dav.balanceOf(user) >= dav.getRequiredDAVAmount(),
             "required enough dav to paritcipate"
         );
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
@@ -254,11 +246,11 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             );
         }
 
-        require(msg.sender != address(0), "Sender cannot be null");
+        require(user != address(0), "Sender cannot be null");
 
-        address spender = msg.sender;
-        if (msg.sender != tx.origin) {
-            require(approvals[tx.origin][msg.sender], "Caller not approved");
+        address spender = user;
+        if (user != tx.origin) {
+            require(approvals[tx.origin][user], "Caller not approved");
             spender = tx.origin;
         }
 
@@ -352,10 +344,8 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         auctionInterval = _newInterval;
         emit AuctionIntervalUpdated(_newInterval);
     }
-    function setInputAmountRate(uint256 rate) public onlyGovernance {
-        inputAmountRate = rate;
-    }
     function setInAmountPercentage(uint256 amount) public onlyGovernance {
+        require(amount <= 100, "should be less than 100");
         percentage = amount;
     }
     function updateGovernance(address newGov) external onlyGovernance {
