@@ -76,7 +76,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
                 lastIntervalUpdate[DECAY_INTERVAL] + COOLDOWN_PERIOD,
             "Governance update cooldown period not yet passed"
         );
-        lastIntervalUpdate[DECAY_INTERVAL] = block.timestamp;
+        lastIntervalUpdate[newInterval] = block.timestamp;
         DECAY_INTERVAL = newInterval;
     }
 
@@ -90,7 +90,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             block.timestamp >= lastDAVUpdate[davToken] + COOLDOWN_PERIOD,
             "Governance update cooldown period not yet passed"
         );
-        lastDAVUpdate[davToken] = block.timestamp;
+        lastDAVUpdate[newDav] = block.timestamp;
 
         // Update the DAV token reference
         davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(newDav));
