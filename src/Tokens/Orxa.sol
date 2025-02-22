@@ -17,7 +17,6 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     uint256 public constant DECAY_STEP = 1; // 1% per interval
     uint256 private constant PRECISION = 1e18;
     uint256 private constant COOLDOWN_PERIOD = 24 hours;
-    uint256 public constant multiplier = 1000000; // 1 million tokens per DAV holding unit
     mapping(address => uint256) public userBaseReward;
     mapping(address => uint256) public userRewardAmount;
     mapping(address => uint256) public lastDavMintTime;
@@ -26,6 +25,8 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     mapping(address => uint256) public cumulativeMintableHoldings;
     mapping(address => uint256) private lastTransferTimestamp;
     mapping(address => uint256) private lastGovernanceUpdate;
+    mapping(address => uint256) private lastDAVUpdate;
+    mapping(address => uint256) private lastIntervalUpdate;
 
     address public governanceAddress;
 
@@ -70,6 +71,12 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             newInterval != DECAY_INTERVAL,
             "Orxa: New interval must be different from the current"
         );
+        require(
+            block.timestamp >=
+                lastIntervalUpdate[DECAY_INTERVAL] + COOLDOWN_PERIOD,
+            "Governance update cooldown period not yet passed"
+        );
+        lastIntervalUpdate[DECAY_INTERVAL] = block.timestamp;
         DECAY_INTERVAL = newInterval;
     }
 
@@ -79,6 +86,11 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             newDav != address(davToken),
             "Orxa: New DAV token must be different from the current"
         );
+        require(
+            block.timestamp >= lastDAVUpdate[davToken] + COOLDOWN_PERIOD,
+            "Governance update cooldown period not yet passed"
+        );
+        lastDAVUpdate[davToken] = block.timestamp;
 
         // Update the DAV token reference
         davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(newDav));
@@ -152,12 +164,9 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             mintableHoldings > 0,
             "Orxa: No new holdings to calculate minting"
         );
-        // multiplier is for extra mints
-
-        uint256 amountToMint = mintableHoldings * multiplier;
 
         require(
-            totalSupply() + reward + amountToMint <= maxSupply,
+            totalSupply() + (reward * 2) <= maxSupply,
             "Orxa: Max supply exceeded"
         );
 
@@ -167,7 +176,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
 
         // **Interactions**
         _mint(msg.sender, reward);
-        _mint(address(this), amountToMint);
+        _mint(address(this), reward);
     }
 
     /**
@@ -196,6 +205,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
 
         return baseReward;
     }
+
     function getMax_supply() public view returns (uint256) {
         return maxSupply;
     }
