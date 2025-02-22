@@ -135,7 +135,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             revert("Invalid pair, does not match orxa/PSTATE");
         }
 
-        return ratio < 0 ? 0 : uint256(ratio); // Ensure ratio is 0 if it's negative
+        return ratio; // Ensure ratio is not 0
     }
 
     function depositTokens(
@@ -191,10 +191,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         uint256 currentRatio = getRatioPrice();
         uint256 _RatioTarget = getRatioTarget();
-        uint256 currentRatioInEther = currentRatio / 1e18;
+        uint256 currentRatioNormalized = currentRatio / 1e18;
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatioInEther >= _RatioTarget
+            currentRatioNormalized >= _RatioTarget
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
@@ -202,19 +202,19 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
     function checkAndActivateReverseForNextCycle() public onlyGovernance {
         uint256 currentRatio = getRatioPrice();
-        uint256 currentRatioInEther = currentRatio / 1e18;
+        uint256 currentRatioNormalized = currentRatio / 1e18;
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         uint256 _RatioTarget = getRatioTarget();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatioInEther >= _RatioTarget
+                currentRatioNormalized >= _RatioTarget
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
         } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
-            currentRatioInEther >= _RatioTarget
+            currentRatioNormalized >= _RatioTarget
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
         }
@@ -290,7 +290,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         if (isReverseActive == true) {
             userSwapInfo.hasReverseSwap = true;
-
+            require(
+                vaults[outputToken].totalDeposited > 0,
+                "outputToken vault empty"
+            );
             IERC20(inputToken).safeTransferFrom(
                 spender,
                 BURN_ADDRESS,
@@ -301,6 +304,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             IERC20(outputToken).safeTransfer(spender, amountOut);
         } else {
             userSwapInfo.hasSwapped = true;
+            require(
+                vaults[outputToken].totalDeposited > 0,
+                "outputToken vault empty"
+            );
             IERC20(inputToken).safeTransferFrom(
                 spender,
                 BURN_ADDRESS,
@@ -321,7 +328,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
-        require(ratioTarget > 1, "Target ratio must be greater than zero"); // Prevent sub-1 targets
+        require(ratioTarget > 1, "Target ratio must be greater than one"); // Prevent sub-1 targets
         RatioTarget = ratioTarget;
     }
 
@@ -491,18 +498,18 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     function getOutPutAmount() public view returns (uint256) {
         /**
-         * @dev Retrieves the current price ratio of ORXA to PSTATE. The ratio is same for Pstate to Orxa
-         * This ratio is obtained from liquidity pool reserves.
+         * @dev Retrieves the current price ratio of ORXA to PSTATE from the liquidity pool.
+         * This ratio determines the value of 1 ORXA in terms of PSTATE.
          */
         uint256 currentRatio = getRatioPrice();
-        uint256 currentRatioInEther = currentRatio / 1e18;
+        uint256 currentRatioNormalized = currentRatio / 1e18;
 
-        // Ensure the ratio is valid (greater than zero) to prevent invalid calculations
-        require(currentRatioInEther > 0, "Invalid ratio");
+        // Ensure the ratio is valid (greater than zero) to prevent invalid calculations.
+        require(currentRatioNormalized > 0, "Invalid ratio");
 
         /**
          * @dev Fetches the user's minted DAV balance.
-         * If the user has no balance, they cannot participate, so return 0.
+         * If the user has no balance, they cannot participate in the auction, so return 0.
          */
         uint256 userBalance = dav.getUserMintedAmount(msg.sender);
         if (userBalance == 0) {
@@ -511,13 +518,13 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         /**
          * @dev Checks if a reverse auction is currently active.
-         * Reverse auctions follow different output rules.
+         * Reverse auctions follow a different calculation logic.
          */
         bool isReverseActive = isReverseAuctionActive();
 
         /**
          * @dev Determines 1% of the user's eligible auction amount.
-         * Ensures the calculated value is valid.
+         * This value is used to compute the output amount based on the auction type.
          */
         uint256 onePercent = calculateAuctionEligibleAmount();
         require(onePercent > 0, "Invalid one percent balance");
@@ -527,22 +534,26 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         if (isReverseActive) {
             /**
              * @dev Reverse auction calculation:
-             * - Uses the existing ratio (ORXA/PSTATE) & same for reverse (PSTATE/ORXA).
-             * - Applies the necessary scaling and division.
+             * - Uses the **live ratio (ORXA/PSTATE)** instead of a fixed target.
+             * - Ensures that the reward adjusts dynamically with the market.
+             * - The division by `2` ensures that even if the live ratio fluctuates,
+             *   it does not overly incentivize reverse swaps, preventing abuse.
+			 - there is no requirements to divide by ratioTarget.
              */
-            multiplications = (onePercent * currentRatioInEther) / 2;
+            multiplications = (onePercent * currentRatioNormalized) / 2;
         } else {
             /**
              * @dev Normal auction calculation:
-             * - Uses the direct ratio (ORXA/PSTATE).
-             * - Ensures safe multiplication by first dividing before multiplying.
+             * - Uses the **live ratio (ORXA/PSTATE)** to determine the swap amount.
+             * - The result is doubled to provide **higher rewards** for normal swaps.
+             * - This incentivizes **direct auctions**, balancing liquidity in the system.
              */
-            multiplications = (onePercent * currentRatioInEther);
+            multiplications = (onePercent * currentRatioNormalized);
             require(
                 multiplications <= type(uint256).max / 2,
                 "Multiplication overflow"
             );
-            multiplications *= 2; // Double the output in normal auctions
+            multiplications *= 2; // **Intentional incentive for normal auctions**
         }
 
         return multiplications;
