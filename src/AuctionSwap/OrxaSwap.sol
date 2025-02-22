@@ -328,7 +328,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
-        require(ratioTarget > 1, "Target ratio must be greater than one"); // Prevent sub-1 targets
+        // Prevent setting the target ratio below 1 (sub-1 targets)
+        require(ratioTarget > 1, "Target ratio must be greater than one");
+
+        // Store the ratio target directly without scaling - not needed of scaling as the current ratio will convert into Ether form to compare
         RatioTarget = ratioTarget;
     }
 
@@ -505,7 +508,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentRatioNormalized = currentRatio / 1e18;
 
         // Ensure the ratio is valid (greater than zero) to prevent invalid calculations.
-        require(currentRatioNormalized > 0, "Invalid ratio");
+        require(currentRatio > 0, "Invalid ratio");
 
         /**
          * @dev Fetches the user's minted DAV balance.
@@ -538,7 +541,8 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
              * - Ensures that the reward adjusts dynamically with the market.
              * - The division by `2` ensures that even if the live ratio fluctuates,
              *   it does not overly incentivize reverse swaps, preventing abuse.
-			 - there is no requirements to divide by ratioTarget.
+             * - No division by RatioTarget in reverse cause it breaks calculation.
+             * give half amount in reverse auction
              */
             multiplications = (onePercent * currentRatioNormalized) / 2;
         } else {
@@ -547,13 +551,19 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
              * - Uses the **live ratio (ORXA/PSTATE)** to determine the swap amount.
              * - The result is doubled to provide **higher rewards** for normal swaps.
              * - This incentivizes **direct auctions**, balancing liquidity in the system.
+             * Explanation of the double amount:
+             * - The double amount serves to **increase the rewards** for participants in normal auctions.
+             * - This is done to encourage **auction liquidity** by making normal auctions more attractive to users.
+             * - It aims to create a balance between reverse and normal auctions by **boosting normal auction participation**.
              */
+
             multiplications = (onePercent * currentRatioNormalized);
             require(
                 multiplications <= type(uint256).max / 2,
                 "Multiplication overflow"
             );
-            multiplications *= 2; // **Intentional incentive for normal auctions**
+            // **give double the amount in normal auction**
+            multiplications *= 2;
         }
 
         return multiplications;
