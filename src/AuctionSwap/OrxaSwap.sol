@@ -135,13 +135,15 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             revert("Invalid pair, does not match orxa/PSTATE");
         }
 
-        return ratio < 1e18 ? 1e18 : ratio; // Ensure ratio is at least 1
+        return ratio < 0 ? 0 : uint256(ratio); // Ensure ratio is 0 if it's negative
     }
 
     function depositTokens(
         address token,
         uint256 amount
     ) external onlyGovernance {
+        require(token != address(0), "Orxa: Invalid token address");
+        require(amount > 0, "Orxa: Cannot deposit zero tokens");
         vaults[token].totalDeposited += amount;
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -319,7 +321,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
-        require(ratioTarget > 0, "Target ratio must be greater than zero");
+        require(ratioTarget > 1, "Target ratio must be greater than zero"); // Prevent sub-1 targets
         RatioTarget = ratioTarget;
     }
 
@@ -488,32 +490,59 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return (newAmountIn, newAmountOut);
     }
     function getOutPutAmount() public view returns (uint256) {
+        /**
+         * @dev Retrieves the current price ratio of ORXA to PSTATE. The ratio is same for Pstate to Orxa
+         * This ratio is obtained from liquidity pool reserves.
+         */
         uint256 currentRatio = getRatioPrice();
         uint256 currentRatioInEther = currentRatio / 1e18;
+
+        // Ensure the ratio is valid (greater than zero) to prevent invalid calculations
         require(currentRatioInEther > 0, "Invalid ratio");
 
+        /**
+         * @dev Fetches the user's minted DAV balance.
+         * If the user has no balance, they cannot participate, so return 0.
+         */
         uint256 userBalance = dav.getUserMintedAmount(msg.sender);
         if (userBalance == 0) {
             return 0;
         }
 
+        /**
+         * @dev Checks if a reverse auction is currently active.
+         * Reverse auctions follow different output rules.
+         */
         bool isReverseActive = isReverseAuctionActive();
+
+        /**
+         * @dev Determines 1% of the user's eligible auction amount.
+         * Ensures the calculated value is valid.
+         */
         uint256 onePercent = calculateAuctionEligibleAmount();
         require(onePercent > 0, "Invalid one percent balance");
 
         uint256 multiplications;
 
         if (isReverseActive) {
-            // Safe multiplication with division first (to reduce large numbers)
+            /**
+             * @dev Reverse auction calculation:
+             * - Uses the existing ratio (ORXA/PSTATE) & same for reverse (PSTATE/ORXA).
+             * - Applies the necessary scaling and division.
+             */
             multiplications = (onePercent * currentRatioInEther) / 2;
         } else {
-            // Safe multiplication: First divide, then multiply
-            multiplications = (onePercent * currentRatioInEther) / 1; // Ensure this is valid
+            /**
+             * @dev Normal auction calculation:
+             * - Uses the direct ratio (ORXA/PSTATE).
+             * - Ensures safe multiplication by first dividing before multiplying.
+             */
+            multiplications = (onePercent * currentRatioInEther);
             require(
                 multiplications <= type(uint256).max / 2,
                 "Multiplication overflow"
             );
-            multiplications *= 2;
+            multiplications *= 2; // Double the output in normal auctions
         }
 
         return multiplications;

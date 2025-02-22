@@ -28,7 +28,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     mapping(address => uint256) private lastTransferTimestamp;
     mapping(address => uint256) private lastGovernanceUpdate;
     mapping(address => uint256) private lastDAVUpdate;
-    mapping(address => uint256) private lastIntervalUpdate;
+    mapping(uint256  => uint256) private lastIntervalUpdate;
 
     address public governanceAddress;
 
@@ -89,7 +89,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
             "Orxa: New DAV token must be different from the current"
         );
         require(
-            block.timestamp >= lastDAVUpdate[davToken] + COOLDOWN_PERIOD,
+            block.timestamp >= lastDAVUpdate[address(davToken)] + COOLDOWN_PERIOD,
             "Governance update cooldown period not yet passed"
         );
         lastDAVUpdate[newDav] = block.timestamp;
