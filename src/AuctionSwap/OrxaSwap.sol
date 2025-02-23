@@ -362,7 +362,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         emit AuctionIntervalUpdated(_newInterval);
     }
     function setInAmountPercentage(uint256 amount) public onlyGovernance {
-        require(amount <= 100, "should be less than 100");
+        require(amount <= 100, "Percentage exceeds safe limit");
         percentage = amount;
     }
     function updateGovernance(address newGov) external onlyGovernance {
@@ -486,6 +486,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             ? secondCalWithDavMax * 2
             : secondCalWithDavMax;
 
+        // no more auctions after 100 cycle. maximum auction is 100
         if (currentCycle > 0) {
             /**
              * @dev Decreases the eligible auction amount by 1% per cycle.
@@ -553,10 +554,9 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
              *   - This **prevents excessive ORXA issuance**, keeping the auction balanced.
              * - Example:
              *   - Market ratio = **2 ORXA/STATE** (1 STATE = **0.5 ORXA**).
-		
              *   - Instead of giving **2 ORXA per STATE burned**, we **intentionally give 1 ORXA**.
              * - This prevents abuse and ensures a steady reduction in STATE supply.
-			 * - **Not considered a critical issue, as this functionality is intentional. Any issues here do not apply logic changes.**
+			 * - **Not considered a critical issue, as this functionality is intentional.**
              */
             multiplications = (onePercent * currentRatioNormalized) / 2;
         } else {
@@ -565,14 +565,24 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
              * - **Double rewards** are given to attract users to swap here instead of other DEXs.
              * - This keeps normal auctions competitive while ensuring liquidity growth.
              * - **No risk of vault depletion**, as the supply is actively managed by governance.
-             * - **Not considered a critical issue, as this functionality is intentional. Any issues here do not apply logic changes.**
+             * ⚠️ No direct cap is enforced because:
+             * - Governance manages supply/demand dynamics.
+             * - The vault is monitored and controlled to prevent depletion.
+             * - **Not considered a critical issue, as this functionality is intentional..**
              */
             multiplications = (onePercent * currentRatioNormalized);
             require(
                 multiplications <= type(uint256).max / 2,
                 "Multiplication overflow"
             );
+            // In `getOutPutAmount` for normal auctions:
             multiplications *= 2;
+            /**
+             * @dev Double the output to incentivize swaps on this platform.
+             * - Users receive twice the STATE tokens compared to DEX rates.
+             * - This drives STATE liquidity to external DEXes, increasing ORXA demand.
+             * - Governance manages vault supply to prevent depletion.
+             */
         }
 
         return multiplications;
