@@ -135,7 +135,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             revert("Invalid pair, does not match orxa/PSTATE");
         }
 
-        return ratio; // Ensure ratio is not 0
+        return ratio;
     }
 
     function depositTokens(
@@ -190,11 +190,11 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function checkAndActivateReverseAuction() internal {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
         uint256 currentRatio = getRatioPrice();
-        uint256 _RatioTarget = getRatioTarget();
+        uint256 RatioTargetForRevrese = getRatioTarget();
         uint256 currentRatioNormalized = currentRatio / 1e18;
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatioNormalized >= _RatioTarget
+            currentRatioNormalized >= RatioTargetForRevrese
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
@@ -204,11 +204,11 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 currentRatio = getRatioPrice();
         uint256 currentRatioNormalized = currentRatio / 1e18;
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
-        uint256 _RatioTarget = getRatioTarget();
+        uint256 RatioTargetForRevrese = getRatioTarget();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatioNormalized >= _RatioTarget
+                currentRatioNormalized >= RatioTargetForRevrese
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
@@ -328,10 +328,17 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
 
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
-        // Prevent setting the target ratio below 1 (sub-1 targets)
+        /**
+         * @dev Sets the target ratio for auctions.
+         * - This DApp **does not use scaled ratios (1e18 precision)** anywhere.
+         * - Both **current ratio and RatioTarget** are stored and compared in their **raw integer form**.
+         * - Ensures that **RatioTarget is always greater than 1**, preventing invalid values.
+         * - Since the current ratio is derived from `getRatioPrice()`, it **can never be 0 or below 1**.
+         */
+
         require(ratioTarget > 1, "Target ratio must be greater than one");
 
-        // Store the ratio target directly without scaling - not needed of scaling as the current ratio will convert into Ether form to compare
+        // Store the ratio target directly without applying 1e18 scaling.
         RatioTarget = ratioTarget;
     }
 
@@ -505,10 +512,10 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
          * This ratio determines the value of 1 ORXA in terms of PSTATE.
          */
         uint256 currentRatio = getRatioPrice();
-        uint256 currentRatioNormalized = currentRatio / 1e18;
-
         // Ensure the ratio is valid (greater than zero) to prevent invalid calculations.
         require(currentRatio > 0, "Invalid ratio");
+
+        uint256 currentRatioNormalized = currentRatio / 1e18;
 
         /**
          * @dev Fetches the user's minted DAV balance.
@@ -537,24 +544,30 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         if (isReverseActive) {
             /**
              * @dev Reverse auction calculation:
-             * - Uses the **live ratio (ORXA/PSTATE)** instead of a fixed target.
-             * - Ensures that the reward adjusts dynamically with the market.
-             * - The division by `2` ensures that even if the live ratio fluctuates,
-             *   it does not overly incentivize reverse swaps, preventing abuse.
-             * - No division by RatioTarget in reverse cause it breaks calculation.
-             * give half amount in reverse auction
+             * - This DApp **rewards double ORXA in reverse auctions** compared to traditional DEXs.
+             * - The goal is to **incentivize STATE burning** by offering **higher rewards**.
+             * - Normally, a reverse auction might offer 1 ORXA for (currentRatio * ORXA) STATE.
+             * - Here, we **divide the amount by two ** (CurrentRatio * ORXA) / 2) to make it more attractive.
+             * - the main goal is to make state value half by current calculation so, it can provide double the orxa amount.
+             * - This is a **strategic liquidity incentive** that differentiates this DApp.
+             * - on other hand it is burning tokens so, removing from market supply
+             * - below is only the outPut amount.
              */
             multiplications = (onePercent * currentRatioNormalized) / 2;
         } else {
             /**
              * @dev Normal auction calculation:
-             * - Uses the **live ratio (ORXA/PSTATE)** to determine the swap amount.
-             * - The result is doubled to provide **higher rewards** for normal swaps.
-             * - This incentivizes **direct auctions**, balancing liquidity in the system.
-             * Explanation of the double amount:
-             * - The double amount serves to **increase the rewards** for participants in normal auctions.
-             * - This is done to encourage **auction liquidity** by making normal auctions more attractive to users.
-             * - It aims to create a balance between reverse and normal auctions by **boosting normal auction participation**.
+             * - This DApp **rewards double STATE in normal auctions** compared to other DEXs.
+             * - The goal is to **encourage users to mint STATE through this platform** rather than competitors.
+             * - Normally, swapping 1 ORXA would yield `X` STATE, but here, it **yields 2X STATE**.
+             * - This feature **creates a competitive advantage**, making swaps more rewarding on this DApp.
+             * - While this increases market fluidity, it **ensures higher participation and engagement**.
+             * - on other hand it is burning tokens so, removing from market supply
+             *
+             * - **There is no risk of vault depletion** because:
+             *   - The vault is **managed by governance** to control supply.
+             *   - Any imbalances in issuance can be corrected by governance actions.
+             *   - The system is designed to handle liquidity fluctuations dynamically.
              */
 
             multiplications = (onePercent * currentRatioNormalized);
