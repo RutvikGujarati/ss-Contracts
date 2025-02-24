@@ -6,7 +6,7 @@ import "../src/Tokens/Orxa.sol";
 
 contract DeployOrxa is Script {
     function run() external {
-        address davToken = 0x184311E6522Bec0Faa79c87e491717325416Ad1A;
+        address davToken = 0x61b54518A66871ad23cA56b25AcC24F28Acd7614;
         address governance = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
         vm.startBroadcast();
 

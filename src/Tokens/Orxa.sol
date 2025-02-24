@@ -225,7 +225,7 @@ contract Orxa is ERC20, Ownable(msg.sender), ReentrancyGuard {
     ) public view returns (uint256) {
         uint256 supply_p = maxSupply * 10;
         uint256 denominator = 5e9; // Equivalent to 5000000 * 1000
-        uint256 precisionFactor = 1e18; // Scaling factor to maintain precision
+        uint256 precisionFactor = 1e17; // Scaling factor to maintain precision and calculation
 
         uint256 baseReward;
 
