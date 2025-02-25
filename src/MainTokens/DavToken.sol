@@ -11,7 +11,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
     ReentrancyGuard
 {
     uint256 public constant MAX_SUPPLY = 5000000 ether; // 5 Million DAV Tokens
-    uint256 public constant TOKEN_COST = 500 ether;
+    uint256 public constant TOKEN_COST = 500000 ether;
 
     uint256 public mintedSupply; // Total Minted DAV Tokens
     /* liquidity and development wallets*/
@@ -23,7 +23,7 @@ contract Decentralized_Autonomous_Vaults_DAV_V1_1 is
 
     uint256 public deployTime;
     uint256 public constant davIncrement = 1;
-    uint256 public constant maxDAV = 10;
+    uint256 public constant maxDAV = 25;
     /* liquidity and development wallets withdrawal amount*/
     uint256 public totalLiquidityAllocated;
     uint256 public totalDevelopmentAllocated;
