@@ -5,20 +5,20 @@ import "forge-std/Script.sol";
 import {Ratio_Swapping_Auctions_V1_1} from "../src/AuctionSwap/OrxaSwap.sol";
 contract AuctionSwapDeploy is Script {
     function run() external {
-        address davToken = 0x61b54518A66871ad23cA56b25AcC24F28Acd7614;
-        address StatToken = 0x0CF2a9781CD4891e51eA7c93000bC2fDf9668821;
-        address Fluxin = 0x96775FE6D035eC5cF631c3eda81426a86E805373;
-        address governance = 0xB1bD9F3B5F64dE482485A41c84ea4a90DAc5F98e;
-
-        address pairAddress = 0x361aFa3F5EF839bED6071c9F0c225b078eB8089a; // for orxa
-        address orxaToken = 0x6F01eEc1111748B66f735944b18b0EB2835aE201;
-        address pstateToken = 0x63CC0B2CA22b260c7FD68EBBaDEc2275689A3969;
+        address davToken = 0x78f8Aba822259d8B5E4E381bc536816874Aa5D86;
+        address StatToken = 0xc359f56c63A8117C83AbE84F4BB78d9eF124b567;
+        address orxa = 0xfe4EC02E6Fe069d90D4a721313f22d6461ec5A06;
+        address governance = 0xB511110f312a4C6C4a240b2fE94de55D600Df7a9;
+		
+        address pairAddress = 0x79405385904b48112e90dbc4849B00eED4202BB8; // for orxa
+        address orxaToken = 0xfe4EC02E6Fe069d90D4a721313f22d6461ec5A06;
+        address pstateToken = 0xc359f56c63A8117C83AbE84F4BB78d9eF124b567;
         vm.startBroadcast();
 
         Ratio_Swapping_Auctions_V1_1 swap = new Ratio_Swapping_Auctions_V1_1(
             StatToken,
             davToken,
-            Fluxin,
+            orxa,
             governance,
             pstateToken,
             orxaToken,

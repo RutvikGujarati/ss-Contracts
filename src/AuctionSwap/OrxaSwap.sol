@@ -221,7 +221,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function swapTokens(address user) public nonReentrant {
         require(stateToken != address(0), "State token cannot be null");
         require(
-            dav.balanceOf(user) >= dav.getRequiredDAVAmount(),
+            dav.balanceOf(user) >= dav.getRequiredDAVAmount() * 10 ** 18,
             "required enough dav to paritcipate"
         );
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
@@ -556,7 +556,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
              *   - Market ratio = **2 ORXA/STATE** (1 STATE = **0.5 ORXA**).
              *   - Instead of giving **2 ORXA per STATE burned**, we **intentionally give 1 ORXA**.
              * - This prevents abuse and ensures a steady reduction in STATE supply.
-			 * - **Not considered a critical issue, as this functionality is intentional.**
+             * - **Not considered a critical issue, as this functionality is intentional.**
              */
             multiplications = (onePercent * currentRatioNormalized) / 2;
         } else {
