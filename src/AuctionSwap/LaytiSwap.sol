@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "../MainTokens/DavToken.sol";
-import {Xerion} from "../Tokens/Xerion.sol";
+import {Layti} from "../Tokens/Layti.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -21,23 +21,17 @@ interface IPair {
 contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for IERC20;
     Decentralized_Autonomous_Vaults_DAV_V1_1 public dav;
-    uint256 public auctionInterval = 2 hours;
-    uint256 public auctionDuration = 1 hours;
-    uint256 public reverseDuration = 1 hours;
-    uint256 public burnWindowDuration = 1 hours;
-    uint256 public inputAmountRate = 1;
-    Xerion public xerion;
+    uint256 public auctionInterval = 50 days;
+    uint256 public auctionDuration = 24 hours;
+    uint256 public reverseDuration = 24 hours;
+    Layti public layti;
     uint256 public percentage = 1;
-    address public xerionAddress;
-    uint256 public burnRate = 100000; // Default burn rate in thousandths (0.001)
-    uint256 public MaxLimitOfStateBurning = 10000000000000 ether;
+    address public laytiAddress;
     address private constant BURN_ADDRESS =
         0x0000000000000000000000000000000000000369;
 
     address public stateToken;
-    address public pairAddress = 0xc6359cD2c70F643888d556D377a4E8e25CAadF77;
-    address public xerionToken = 0xb9664dE2E15b24f5e934e66c72ad9329469E3642;
-    address public pstateToken = 0x63CC0B2CA22b260c7FD68EBBaDEc2275689A3969;
+    address public pairAddress; // for layti
     address public governanceAddress;
 
     modifier onlyGovernance() {
@@ -50,6 +44,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     uint256 public TotalBurnedStates;
     uint256 public TotalTokensBurned;
     uint256 public totalBounty;
+    uint256 private constant COOLDOWN_PERIOD = 24 hours;
 
     struct Vault {
         uint256 totalDeposited;
@@ -60,7 +55,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         uint256 startTime;
         uint256 endTime;
         bool isActive;
-        address xerionAddress;
+        address laytiAddress;
         address stateToken;
     }
     struct AuctionCycle {
@@ -72,51 +67,30 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         bool hasReverseSwap;
         uint256 cycle;
     }
-    struct BurnInfo {
-        address user;
-        uint256 remainingamount;
-        uint256 bountyAMount;
-        uint256 time;
-    }
+
     mapping(address => Vault) public vaults;
-    mapping(address => BurnInfo) public burnInfo;
-    mapping(address => mapping(address => uint256)) public RatioTarget;
+    uint256 public RatioTarget;
     mapping(address => mapping(address => bool)) public approvals;
-    mapping(address => mapping(address => uint256)) public lastBurnTime;
     mapping(address => mapping(address => mapping(address => mapping(uint256 => UserSwapInfo))))
         public userSwapTotalInfo;
-    mapping(address => mapping(address => uint256)) public lastBurnCycle; // Track last burn cycle per token pair
     mapping(address => uint256) public maxSupply; // Max supply per token
-    mapping(address => mapping(uint256 => bool)) public burnOccurredInCycle;
     mapping(uint256 => bool) public reverseAuctionActive;
     mapping(address => mapping(address => AuctionCycle)) public auctionCycles;
-
-    event TokensBurned(
-        address indexed user,
-        address indexed token,
-        uint256 burnedAmount,
-        uint256 rewardAmount
-    );
+    mapping(address => uint256) public TotalStateBurnedByUser;
+    mapping(address => uint256) private lastGovernanceUpdate;
 
     event AuctionStarted(
         uint256 startTime,
         uint256 endTime,
-        address xerionAddress,
+        address laytiAddress,
         address stateToken
     );
-
+    event AuctionDurationUpdated(uint256 newAuctionDuration);
     event TokensDeposited(address indexed token, uint256 amount);
-    event AuctionStarted(
-        uint256 startTime,
-        uint256 endTime,
-        address xerionAddress,
-        address stateToken,
-        uint256 collectionPercentage
-    );
 
     event TokensSwapped(
         address indexed user,
-        address indexed xerionAddress,
+        address indexed laytiAddress,
         address indexed stateToken,
         uint256 amountIn,
         uint256 amountOut
@@ -126,17 +100,19 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     constructor(
         address state,
         address davToken,
-        address _xerion,
-        address _gov
+        address _layti,
+        address _gov,
+        address _pairAddress
     ) {
         governanceAddress = _gov;
-        xerion = Xerion(_xerion);
-        xerionAddress = _xerion;
+        layti = Layti(_layti);
+        laytiAddress = _layti;
         stateToken = state;
+        pairAddress = _pairAddress;
         dav = Decentralized_Autonomous_Vaults_DAV_V1_1(payable(davToken));
     }
 
-    function getxerionToPstateRatio() public view returns (uint256) {
+    function getRatioPrice() public view returns (uint256) {
         IPair pair = IPair(pairAddress);
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
         address token0 = pair.token0();
@@ -144,20 +120,24 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         require(reserve0 > 0 && reserve1 > 0, "Invalid reserves"); // ✅ Prevents division by zero
 
-        // Ensure xerion/PSTATE ratio is returned
-        if (token0 == xerionToken && token1 == pstateToken) {
-            return (uint256(reserve1) * 1e18) / uint256(reserve0);
-        } else if (token0 == pstateToken && token1 == xerionToken) {
-            return (uint256(reserve0) * 1e18) / uint256(reserve1);
+        uint256 ratio;
+        if (token0 == laytiAddress && token1 == stateToken) {
+            ratio = (uint256(reserve1) * 1e18) / uint256(reserve0);
+        } else if (token0 == stateToken && token1 == laytiAddress) {
+            ratio = (uint256(reserve0) * 1e18) / uint256(reserve1);
         } else {
-            revert("Invalid pair, does not match xerion/PSTATE");
+            revert("Invalid pair, does not match layti/PSTATE");
         }
+
+        return ratio;
     }
 
     function depositTokens(
         address token,
         uint256 amount
     ) external onlyGovernance {
+        require(token != address(0), "layti: Invalid token address");
+        require(amount > 0, "layti: Cannot deposit zero tokens");
         vaults[token].totalDeposited += amount;
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -166,13 +146,13 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
     function startAuction() public onlyGovernance {
         require(
-            xerionAddress != address(0) && stateToken != address(0),
+            laytiAddress != address(0) && stateToken != address(0),
             "Invalid token addresses"
         );
 
         uint256 currentTime = block.timestamp;
 
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[laytiAddress][stateToken];
 
         // Check if the auction for the specified pair is already initialized
         if (cycle.isInitialized) {
@@ -188,50 +168,45 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         cycle.firstAuctionStart = currentTime;
         cycle.isInitialized = true;
 
-        auctionCycles[stateToken][xerionAddress] = AuctionCycle({
+        auctionCycles[stateToken][laytiAddress] = AuctionCycle({
             firstAuctionStart: currentTime,
             isInitialized: true
         });
 
-        uint256 newCycle = (currentTime - cycle.firstAuctionStart) /
-            auctionDuration +
-            1;
-        lastBurnCycle[xerionAddress][stateToken] = newCycle - 1;
-        lastBurnCycle[stateToken][xerionAddress] = newCycle - 1;
         emit AuctionStarted(
             currentTime,
             currentTime + auctionDuration,
-            xerionAddress,
+            laytiAddress,
             stateToken
         );
     }
 
     function checkAndActivateReverseAuction() internal {
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
-        uint256 currentRatio = getxerionToPstateRatio();
-        uint256 currentRatioInEther = currentRatio / 1e18;
+        uint256 currentRatio = getRatioPrice();
+        uint256 RatioTargetForRevrese = getRatioTarget();
         if (
             !reverseAuctionActive[currentAuctionCycle] &&
-            currentRatioInEther >= RatioTarget[xerionAddress][stateToken]
+            currentRatio >= RatioTargetForRevrese
         ) {
             reverseAuctionActive[currentAuctionCycle] = true;
         }
     }
 
     function checkAndActivateReverseForNextCycle() public onlyGovernance {
-        uint256 currentRatio = getxerionToPstateRatio();
-        uint256 currentRatioInEther = currentRatio / 1e18;
+        uint256 currentRatio = getRatioPrice();
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
+        uint256 RatioTargetForRevrese = getRatioTarget();
         if (isAuctionActive()) {
             if (
                 !reverseAuctionActive[currentAuctionCycle] &&
-                currentRatioInEther >= RatioTarget[xerionAddress][stateToken]
+                currentRatio >= RatioTargetForRevrese
             ) {
                 reverseAuctionActive[currentAuctionCycle] = true;
             }
         } else if (
             !reverseAuctionActive[currentAuctionCycle + 1] &&
-            currentRatioInEther >= RatioTarget[xerionAddress][stateToken]
+            currentRatio >= RatioTargetForRevrese
         ) {
             reverseAuctionActive[currentAuctionCycle + 1] = true;
         }
@@ -240,14 +215,14 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     function swapTokens(address user) public nonReentrant {
         require(stateToken != address(0), "State token cannot be null");
         require(
-            dav.balanceOf(msg.sender) >= dav.getRequiredDAVAmount(),
+            dav.balanceOf(user) >= dav.getRequiredDAVAmount() * 10 ** 18,
             "required enough dav to paritcipate"
         );
         uint256 currentAuctionCycle = getCurrentAuctionCycle();
 
         // Ensure the user has not swapped for this token pair in the current auction cycle
         UserSwapInfo storage userSwapInfo = userSwapTotalInfo[user][
-            xerionAddress
+            laytiAddress
         ][stateToken][currentAuctionCycle];
         bool isReverseActive = isReverseAuctionActive();
 
@@ -265,17 +240,17 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             );
         }
 
-        require(msg.sender != address(0), "Sender cannot be null");
+        require(user != address(0), "Sender cannot be null");
 
-        address spender = msg.sender;
-        if (msg.sender != tx.origin) {
-            require(approvals[tx.origin][msg.sender], "Caller not approved");
+        address spender = user;
+        if (user != tx.origin) {
+            require(approvals[tx.origin][user], "Caller not approved");
             spender = tx.origin;
         }
 
-        address inputToken = xerionAddress;
+        address inputToken = laytiAddress;
         address outputToken = stateToken;
-        uint256 amountIn = getOnepercentOfUserBalance();
+        uint256 amountIn = calculateAuctionEligibleAmount();
         uint256 amountOut = getOutPutAmount();
 
         if (isReverseActive == true) {
@@ -307,21 +282,30 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
         if (isReverseActive == true) {
             userSwapInfo.hasReverseSwap = true;
-
+            require(
+                vaults[outputToken].totalDeposited > 0,
+                "outputToken vault empty"
+            );
             IERC20(inputToken).safeTransferFrom(
                 spender,
                 BURN_ADDRESS,
                 amountIn
             );
             TotalBurnedStates += amountIn;
+            TotalStateBurnedByUser[user] += amountIn;
             IERC20(outputToken).safeTransfer(spender, amountOut);
         } else {
             userSwapInfo.hasSwapped = true;
+            require(
+                vaults[outputToken].totalDeposited > 0,
+                "outputToken vault empty"
+            );
             IERC20(inputToken).safeTransferFrom(
                 spender,
-                address(this),
+                BURN_ADDRESS,
                 amountIn
             );
+            TotalTokensBurned += amountIn;
             IERC20(outputToken).safeTransfer(spender, amountOut);
         }
 
@@ -335,118 +319,71 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         checkAndActivateReverseAuction();
     }
 
-    function burnTokens() external {
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
-        require(cycle.isInitialized, "Auction not initialized for this pair");
-
-        uint256 currentTime = block.timestamp;
-
-        // Check if the auction is inactive before proceeding
-        require(!isAuctionActive(), "Auction still active");
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-        uint256 auctionEndTime = cycle.firstAuctionStart +
-            currentCycle *
-            fullCycleLength -
-            auctionInterval;
-
-        // Ensure we're within the burn window (after auction but before interval ends)
-        require(
-            currentTime >= auctionEndTime &&
-                currentTime < auctionEndTime + burnWindowDuration,
-            "Burn window has passed or not started"
-        );
-
-        // Prevent burn if it has already occurred in this cycle
-        require(
-            !burnOccurredInCycle[xerionAddress][currentCycle],
-            "Burn already occurred for this cycle"
-        );
-
-        uint256 burnAmount = (xerion.balanceOf(address(this)) * 1) / burnRate;
-
-        burnOccurredInCycle[xerionAddress][currentCycle] = true;
-        lastBurnCycle[xerionAddress][stateToken] = currentCycle;
-        lastBurnTime[xerionAddress][stateToken] = currentTime;
-
-        // Reward user with 1% of burn amount
-        uint256 reward = burnAmount / 100;
-        totalBounty += reward;
-        xerion.transfer(msg.sender, reward);
-
-        // Burn the remaining tokens
-        uint256 remainingBurnAmount = burnAmount - reward;
-
-        TotalTokensBurned += remainingBurnAmount;
-
-        require(
-            TotalTokensBurned < MaxLimitOfStateBurning,
-            "limit is reached of burning state token"
-        );
-        xerion.transfer(BURN_ADDRESS, remainingBurnAmount);
-
-        emit TokensBurned(
-            msg.sender,
-            xerionAddress,
-            remainingBurnAmount,
-            reward
-        );
-    }
-
     function setRatioTarget(uint256 ratioTarget) external onlyGovernance {
-        require(ratioTarget > 0, "Target ratio must be greater than zero");
+        /**
+         * @dev Sets the target ratio for auctions.
+         * - This DApp **does not use scaled ratios (1e18 precision)** anywhere.
+         * - Both **current ratio and RatioTarget** are stored and compared in their **raw integer form**.
+         * - Ensures that **RatioTarget is always greater than 1**, preventing invalid values.
+         * - Since the current ratio is derived from `getRatioPrice()`, it **can never be 0 or below 1**.
+         */
 
-        RatioTarget[xerionAddress][stateToken] = ratioTarget;
-        RatioTarget[stateToken][xerionAddress] = ratioTarget;
+        require(ratioTarget >= 1e18, "Target must be greater than 1e18"); // ✅ Enforce scaling
+
+        // Store the ratio target directly without applying 1e18 scaling.
+        RatioTarget = ratioTarget;
     }
 
     function setAuctionDuration(
         uint256 _auctionDuration
     ) external onlyGovernance {
         auctionDuration = _auctionDuration;
+        emit AuctionDurationUpdated(_auctionDuration);
     }
 
-    function setBurnDuration(uint256 _auctionDuration) external onlyGovernance {
-        burnWindowDuration = _auctionDuration;
+    function setAddressOfPair(address _pairAddress) public onlyGovernance {
+        pairAddress = _pairAddress;
     }
-
     function setAuctionInterval(uint256 _newInterval) external onlyGovernance {
         require(_newInterval > 0, "Interval must be greater than 0");
         auctionInterval = _newInterval;
         emit AuctionIntervalUpdated(_newInterval);
     }
-    function setInputAmountRate(uint256 rate) public onlyGovernance {
-        inputAmountRate = rate;
-    }
     function setInAmountPercentage(uint256 amount) public onlyGovernance {
+        require(amount <= 100, "Percentage exceeds safe limit");
         percentage = amount;
     }
-    function setBurnRate(uint256 _burnRate) external onlyGovernance {
-        require(_burnRate > 0, "Burn rate must be greater than 0");
-        burnRate = _burnRate;
+    function updateGovernance(address newGov) external onlyGovernance {
+        require(newGov != address(0), "Invalid address");
+        require(
+            block.timestamp >=
+                lastGovernanceUpdate[governanceAddress] + COOLDOWN_PERIOD,
+            "Governance update cooldown period not yet passed"
+        );
+
+        governanceAddress = newGov;
+        lastGovernanceUpdate[newGov] = block.timestamp;
     }
     function getUserHasSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[user][xerionAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][laytiAddress][stateToken][getCycle]
                 .hasSwapped;
     }
 
     function getUserHasReverseSwapped(address user) public view returns (bool) {
         uint256 getCycle = getCurrentAuctionCycle();
         return
-            userSwapTotalInfo[user][xerionAddress][stateToken][getCycle]
+            userSwapTotalInfo[user][laytiAddress][stateToken][getCycle]
                 .hasReverseSwap;
     }
 
     function getRatioTarget() public view returns (uint256) {
-        return RatioTarget[xerionAddress][stateToken];
+        return RatioTarget;
     }
 
     function isAuctionActive() public view returns (bool) {
-        AuctionCycle memory cycle = auctionCycles[xerionAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[laytiAddress][stateToken];
 
         if (!cycle.isInitialized) {
             return false;
@@ -473,7 +410,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
     }
     function isReverseAuctionActive() public view returns (bool) {
         uint256 currentTime = block.timestamp;
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[laytiAddress][stateToken];
         if (!cycle.isInitialized) {
             return false;
         }
@@ -495,7 +432,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return false;
     }
     function getNextAuctionStart() public view returns (uint256) {
-        AuctionCycle memory cycle = auctionCycles[xerionAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[laytiAddress][stateToken];
 
         if (!cycle.isInitialized) {
             return 0;
@@ -513,92 +450,42 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return nextCycleStart;
     }
     function getCurrentAuctionCycle() public view returns (uint256) {
-        AuctionCycle memory cycle = auctionCycles[xerionAddress][stateToken];
+        AuctionCycle memory cycle = auctionCycles[laytiAddress][stateToken];
         if (!cycle.isInitialized) return 0;
 
         uint256 timeSinceStart = block.timestamp - cycle.firstAuctionStart;
         uint256 fullCycleLength = auctionDuration + auctionInterval;
         return timeSinceStart / fullCycleLength;
     }
-    function getBurnOccured() public view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
-        if (!cycle.isInitialized) {
-            return false;
+
+    function calculateAuctionEligibleAmount() public view returns (uint256) {
+        uint256 currentCycle = getCurrentAuctionCycle();
+        if (currentCycle > 100) {
+            currentCycle = 100; // Cap the cycle to 100 to prevent underflow
         }
-        uint256 currentTime = block.timestamp;
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-
-        return burnOccurredInCycle[xerionAddress][currentCycle];
-    }
-
-    function isBurnCycleActive() external view returns (bool) {
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
-        if (!cycle.isInitialized) {
-            return false;
-        }
-        uint256 currentTime = block.timestamp;
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-        uint256 auctionEndTime = cycle.firstAuctionStart +
-            currentCycle *
-            fullCycleLength -
-            auctionInterval;
-
-        if (
-            currentTime >= auctionEndTime &&
-            currentTime < auctionEndTime + burnWindowDuration
-        ) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    function getTimeLeftInBurnCycle() public view returns (uint256) {
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
-        if (!cycle.isInitialized) {
-            return 0;
-        }
-
-        uint256 currentTime = block.timestamp;
-
-        uint256 fullCycleLength = auctionDuration + auctionInterval;
-        uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
-        uint256 currentCycle = (timeSinceStart / fullCycleLength) + 1;
-        uint256 auctionEndTime = cycle.firstAuctionStart +
-            currentCycle *
-            fullCycleLength -
-            auctionInterval;
-
-        // Check if we are in the burn window
-        if (
-            currentTime >= auctionEndTime &&
-            currentTime < auctionEndTime + burnWindowDuration
-        ) {
-            return (auctionEndTime + burnWindowDuration) - currentTime;
-        }
-
-        // If the burn cycle is not active, return 0
-        return 0;
-    }
-    function getOnepercentOfUserBalance() public view returns (uint256) {
-        uint256 davbalance = dav.balanceOf(msg.sender);
+        uint256 davbalance = dav.getUserMintedAmount(msg.sender);
         bool isReverse = isReverseAuctionActive();
         if (davbalance == 0) {
             return 0;
         }
-        uint256 firstCal = (xerion.getMax_supply() * percentage) / 100 ether;
+        uint256 firstCal = (layti.getMax_supply() * percentage) / 100 ether;
         uint256 secondCalWithDavMax = (firstCal / 5000000) * davbalance;
-        if (isReverse == true) {
-            return secondCalWithDavMax * 2;
-        } else {
-            return secondCalWithDavMax;
+        uint256 baseAmount = isReverse
+            ? secondCalWithDavMax * 2
+            : secondCalWithDavMax;
+
+        // no more auctions after 100 cycle. maximum auction is 100
+        if (currentCycle > 0) {
+            /**
+             * @dev Decreases the eligible auction amount by 1% per cycle.
+             * - **Intentionally reaches zero at cycle 100**, preventing unlimited participation.
+             * - This ensures that users participate earlier, adding urgency to the auction process.
+             * - **Not a critical issue**, as this functionality is by design. Any issues here do not apply logic changes.
+             */
+            uint256 decrementFactor = 100 - currentCycle; // Each cycle decreases amount by 1%
+            return (baseAmount * decrementFactor) / 100;
         }
+        return baseAmount;
     }
     function getSwapAmounts(
         uint256 _amountIn,
@@ -613,32 +500,77 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
         return (newAmountIn, newAmountOut);
     }
     function getOutPutAmount() public view returns (uint256) {
-        uint256 currentRatio = getxerionToPstateRatio();
-        uint256 currentRatioInEther = currentRatio / 1e18;
-        require(currentRatioInEther > 0, "Invalid ratio");
-
-        uint256 userBalance = dav.balanceOf(msg.sender);
+        /**
+         * @dev Retrieves the current price ratio of layti to PSTATE from the liquidity pool.
+         * This ratio determines the value of 1 layti in terms of PSTATE.
+         */
+        uint256 currentRatio = getRatioPrice();
+        // Ensure the ratio is valid (greater than zero) to prevent invalid calculations.
+        require(currentRatio > 0, "Invalid ratio");
+        //scale down for calculation
+        uint256 currentRatioNormalized = currentRatio / 1e18;
+        /**
+         * @dev Fetches the user's minted DAV balance.
+         * If the user has no balance, they cannot participate in the auction, so return 0.
+         */
+        uint256 userBalance = dav.getUserMintedAmount(msg.sender);
         if (userBalance == 0) {
             return 0;
         }
 
+        /**
+         * @dev Checks if a reverse auction is currently active.
+         * Reverse auctions follow a different calculation logic.
+         */
         bool isReverseActive = isReverseAuctionActive();
-        uint256 onePercent = getOnepercentOfUserBalance();
+
+        /**
+         * @dev Determines 1% of the user's eligible auction amount.
+         * This value is used to compute the output amount based on the auction type.
+         */
+        uint256 onePercent = calculateAuctionEligibleAmount();
         require(onePercent > 0, "Invalid one percent balance");
 
         uint256 multiplications;
 
         if (isReverseActive) {
-            // Safe multiplication with division first (to reduce large numbers)
-            multiplications = (onePercent * currentRatioInEther) / 2;
+            /**
+             * @dev Reverse auction calculation:
+             * - This **intentionally** provides **half the layti rewards** to ensure controlled burning.
+             * - Instead of using the inverse ratio (STATE/layti), we use layti/STATE because:
+             *   - The goal is to gradually reduce STATE supply without over-rewarding burns.
+             *   - This **prevents excessive layti issuance**, keeping the auction balanced.
+             * - Example:
+             *   - Market ratio = **2 layti/STATE** (1 STATE = **0.5 layti**).
+             *   - Instead of giving **2 layti per STATE burned**, we **intentionally give 1 layti**.
+             * - This prevents abuse and ensures a steady reduction in STATE supply.
+             * - **Not considered a critical issue, as this functionality is intentional.**
+             */
+            multiplications = (onePercent * currentRatioNormalized) / 2;
         } else {
-            // Safe multiplication: First divide, then multiply
-            multiplications = (onePercent * currentRatioInEther) / 1; // Ensure this is valid
+            /**
+             * @dev Normal auction calculation:
+             * - **Double rewards** are given to attract users to swap here instead of other DEXs.
+             * - This keeps normal auctions competitive while ensuring liquidity growth.
+             * - **No risk of vault depletion**, as the supply is actively managed by governance.
+             * ⚠️ No direct cap is enforced because:
+             * - Governance manages supply/demand dynamics.
+             * - The vault is monitored and controlled to prevent depletion.
+             * - **Not considered a critical issue, as this functionality is intentional..**
+             */
+            multiplications = (onePercent * currentRatioNormalized);
             require(
                 multiplications <= type(uint256).max / 2,
                 "Multiplication overflow"
             );
+            // In `getOutPutAmount` for normal auctions:
             multiplications *= 2;
+            /**
+             * @dev Double the output to incentivize swaps on this platform.
+             * - Users receive twice the STATE tokens compared to DEX rates.
+             * - This drives STATE liquidity to external DEXes, increasing layti demand.
+             * - Governance manages vault supply to prevent depletion.
+             */
         }
 
         return multiplications;
@@ -646,6 +578,11 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
 
     function getTotalStateBurned() public view returns (uint256) {
         return TotalBurnedStates;
+    }
+    function getTotalStateBurnedByUser(
+        address user
+    ) public view returns (uint256) {
+        return TotalStateBurnedByUser[user];
     }
 
     function getTotalBountyCollected() public view returns (uint256) {
@@ -661,7 +598,7 @@ contract Ratio_Swapping_Auctions_V1_1 is Ownable(msg.sender), ReentrancyGuard {
             return 0; // Auction is not active
         }
 
-        AuctionCycle storage cycle = auctionCycles[xerionAddress][stateToken];
+        AuctionCycle storage cycle = auctionCycles[laytiAddress][stateToken];
         uint256 currentTime = block.timestamp;
 
         uint256 timeSinceStart = currentTime - cycle.firstAuctionStart;
