@@ -2,15 +2,15 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Tokens/Layti.sol";
+import "../src/Tokens/$1.sol";
 
-contract DeployLayti is Script {
+contract Deploy1_Dollar is Script {
     function run() external {
         address davToken = 0x78f8Aba822259d8B5E4E381bc536816874Aa5D86;
         address governance = 0xB511110f312a4C6C4a240b2fE94de55D600Df7a9;
         vm.startBroadcast();
 
-        Layti orxa = new Layti(davToken, "Layti", "Layti", governance);
+        $1 orxa = new $1(davToken, "1$", "1$", governance);
 
         console.log("Orxa deployed at:", address(orxa));
 
