@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "../MainTokens/DavToken.sol";
 
-contract $1 is ERC20, Ownable(msg.sender), ReentrancyGuard {
+contract OneDollar is ERC20, Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     Decentralized_Autonomous_Vaults_DAV_V1_1 public davToken;

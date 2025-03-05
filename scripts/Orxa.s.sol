@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Tokens/$1.sol";
+import "../src/Tokens/OneDollar.sol";
 
 contract Deploy1_Dollar is Script {
     function run() external {
@@ -10,9 +10,9 @@ contract Deploy1_Dollar is Script {
         address governance = 0xB511110f312a4C6C4a240b2fE94de55D600Df7a9;
         vm.startBroadcast();
 
-        $1 orxa = new $1(davToken, "1$", "1$", governance);
+       OneDollar oneD = new OneDollar(davToken, "1$", "1$", governance);
 
-        console.log("Orxa deployed at:", address(orxa));
+        console.log("OneDollar deployed at:", address(oneD));
 
         vm.stopBroadcast();
     }
