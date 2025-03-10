@@ -178,4 +178,7 @@ contract Deepstate {
     function tokensToEthereum(uint256 _tokens) internal pure returns (uint256) {
         return _tokens * INITIAL_TOKEN_PRICE;
     }
+    function getContractBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
 }
