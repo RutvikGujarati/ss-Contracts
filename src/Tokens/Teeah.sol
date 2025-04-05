@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Decentralized_Autonomous_Vaults_DAV_V1_1} from "../MainTokens/DavToken.sol";
 
-contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
+contract Teeah is ERC20, Ownable(msg.sender), ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     Decentralized_Autonomous_Vaults_DAV_V1_1 public davToken;
@@ -38,7 +38,7 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
     modifier onlyGovernance() {
         require(
             isAuthorized[msg.sender],
-            "Teech: You are not authorized to perform this action"
+            "Teeah: You are not authorized to perform this action"
         );
         _;
     }
@@ -51,11 +51,11 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
     ) ERC20(name, symbol) {
         require(
             _davTokenAddress != address(0),
-            "Teech: Invalid DAV token address"
+            "Teeah: Invalid DAV token address"
         );
         require(
             Governance != address(0),
-            "Teech: Governance address cannot be zero"
+            "Teeah: Governance address cannot be zero"
         );
 
         davToken = Decentralized_Autonomous_Vaults_DAV_V1_1(
@@ -68,10 +68,10 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
     }
 
     function changeInterval(uint256 newInterval) external onlyGovernance {
-        require(newInterval > 0, "Teech: Interval must be greater than zero");
+        require(newInterval > 0, "Teeah: Interval must be greater than zero");
         require(
             newInterval != DECAY_INTERVAL,
-            "Teech: New interval must be different from the current"
+            "Teeah: New interval must be different from the current"
         );
         require(
             block.timestamp >=
@@ -83,10 +83,10 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
     }
 
     function changeDavToken(address newDav) external onlyGovernance {
-        require(newDav != address(0), "Teech: Invalid DAV token address");
+        require(newDav != address(0), "Teeah: Invalid DAV token address");
         require(
             newDav != address(davToken),
-            "Teech: New DAV token must be different from the current"
+            "Teeah: New DAV token must be different from the current"
         );
         require(
             block.timestamp >=
@@ -129,14 +129,14 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
      */
     function distributeReward(address user) external nonReentrant {
         // **Checks**
-        require(user != address(0), "Teech: Invalid user address");
+        require(user != address(0), "Teeah: Invalid user address");
         uint256 currentDavHolding = davToken.getUserMintedAmount(user);
-        require(msg.sender == user, "Teech: Invalid sender");
+        require(msg.sender == user, "Teeah: Invalid sender");
         uint256 lastHolding = lastDavHolding[user];
         uint256 newDavMinted = currentDavHolding > lastHolding
             ? currentDavHolding - lastHolding
             : 0;
-        require(newDavMinted > 0, "Teech: No new DAV minted");
+        require(newDavMinted > 0, "Teeah: No new DAV minted");
 
         uint256 mintTimestamp = davToken.viewLastMintTimeStamp(user);
 
@@ -178,12 +178,12 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
     function mintReward() external nonReentrant {
         // **Checks**
         uint256 reward = userRewardAmount[msg.sender];
-        require(reward > 0, "Teech: No reward to mint");
+        require(reward > 0, "Teeah: No reward to mint");
 
         uint256 mintableHoldings = cumulativeMintableHoldings[msg.sender];
         require(
             mintableHoldings > 0,
-            "Teech: No new holdings to calculate minting"
+            "Teeah: No new holdings to calculate minting"
         );
 
         // Define the maximum mintable amount (20% of maxSupply)
@@ -199,7 +199,7 @@ contract Teech is ERC20, Ownable(msg.sender), ReentrancyGuard {
         // Ensure total supply does not exceed maxSupply after minting
         require(
             totalSupply() + (reward * 2) <= maxSupply,
-            "Teech: Max supply exceeded"
+            "Teeah: Max supply exceeded"
         );
 
         // **Effects**
